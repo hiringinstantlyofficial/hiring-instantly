@@ -1,0 +1,9 @@
+# Supabase CLI project config.
+#
+# `project_id` is the project ref from your Supabase URL
+# (https://<ref>.supabase.co). It is not a secret.
+#
+# Intentionally minimal: `supabase link` fills in anything else it needs and
+# will tell you if it wants a value (e.g. db.major_version) changed to match
+# the remote project.
+project_id = "ippkiksifkoilripafdd"

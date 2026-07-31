@@ -1,0 +1,217 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens extracted from the homepage reference screenshot.
+ * Depth in this system comes from 1px borders, not shadows, and corners
+ * are square everywhere except badges (pills) and logo tiles (circles).
+ */
+@theme {
+  /* Brand */
+  --color-primary: #4640de;
+  --color-primary-hover: #3730c4;
+  --color-primary-pressed: #2b25a3;
+  --color-primary-surface: #f1f0fe;
+
+  /* Accents */
+  --color-accent-blue: #26a4ff;
+  --color-accent-green: #56cdad;
+  --color-accent-yellow: #ffb836;
+  --color-accent-red: #ff6550;
+  --color-accent-purple: #7b61ff;
+
+  /* Ink */
+  --color-navy-900: #202430;
+  --color-navy-700: #25324b;
+  --color-slate-600: #515b6f;
+  --color-slate-400: #7c8493;
+
+  /* Surfaces & lines */
+  --color-line: #d6ddeb;
+  --color-line-soft: #e9ebfd;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f8f8fd;
+
+  /* Type */
+  --font-sans: var(--font-epilogue), ui-sans-serif, system-ui, sans-serif;
+
+  --text-display: 3rem; /* 48px hero h1 */
+  --text-display--line-height: 1.2;
+  --text-display--letter-spacing: -0.02em;
+  --text-h2: 2rem; /* 32px section heading */
+  --text-h2--line-height: 1.2;
+  --text-h3: 1.5rem; /* 24px */
+  --text-h3--line-height: 1.3;
+  --text-h4: 1.125rem; /* 18px job title */
+  --text-h4--line-height: 1.4;
+
+  /* Shape */
+  --radius-none: 0px;
+  --radius-xs: 4px;
+
+  /* The single shadow in the system: soft lift under the hero search bar */
+  --shadow-lift: 0 12px 24px rgba(37, 50, 75, 0.06);
+
+  /* Layout */
+  --container-page: 1192px;
+  --container-sidebar: 256px;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-slate-600);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    color: var(--color-navy-700);
+    font-weight: 600;
+    text-wrap: balance;
+  }
+
+  /* Visible, consistent keyboard focus across every interactive element. */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+  }
+}
+
+@utility container-page {
+  width: 100%;
+  max-width: var(--container-page);
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+/* Faint diagonal hairlines behind the hero, matching the reference watermark. */
+@utility hero-pattern {
+  background-color: var(--color-surface-muted);
+  background-image: repeating-linear-gradient(
+    115deg,
+    transparent 0px,
+    transparent 46px,
+    var(--color-line-soft) 46px,
+    var(--color-line-soft) 47px
+  );
+}
+
+/* Hand-drawn underline under the accent word in the hero headline. */
+@utility underline-sketch {
+  position: relative;
+  display: inline-block;
+  color: var(--color-accent-blue);
+}
+
+@utility skeleton {
+  background-color: var(--color-line-soft);
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse-soft {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Long-form legal/marketing copy: scannable headings, comfortable measure. */
+@utility prose-legal {
+  color: var(--color-slate-600);
+  line-height: 1.75;
+
+  & h2 {
+    font-size: var(--text-h3);
+    line-height: 1.3;
+    margin-top: 2.5rem;
+    margin-bottom: 0.75rem;
+  }
+
+  & h3 {
+    font-size: 1.125rem;
+    margin-top: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  & p {
+    margin-bottom: 1rem;
+  }
+
+  & ul {
+    list-style: disc;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  /* Added for the blog; the legal pages use none of the rules below, so this
+     stays one utility rather than a near-duplicate `prose-article`. */
+  & ol {
+    list-style: decimal;
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  & li {
+    margin-bottom: 0.5rem;
+  }
+
+  & li::marker {
+    color: var(--color-slate-400);
+  }
+
+  /* Pull-quotes and the example scripts that run through the career articles. */
+  & blockquote {
+    border-left: 3px solid var(--color-primary);
+    background-color: var(--color-surface-muted);
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+    color: var(--color-navy-700);
+  }
+
+  & blockquote > p:last-child {
+    margin-bottom: 0;
+  }
+
+  & table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 1rem;
+    font-size: 0.9375rem;
+    text-align: left;
+  }
+
+  & th,
+  & td {
+    border-bottom: 1px solid var(--color-line);
+    padding: 0.625rem 0.75rem;
+    vertical-align: top;
+  }
+
+  & th {
+    color: var(--color-navy-700);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  & a {
+    color: var(--color-primary);
+    text-decoration: underline;
+  }
+
+  & strong {
+    color: var(--color-navy-700);
+    font-weight: 600;
+  }
+}
