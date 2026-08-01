@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Epilogue } from "next/font/google";
+import Script from "next/script";
 
 import { absoluteUrl, siteConfig } from "@/lib/site";
 
@@ -41,6 +42,9 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true, "max-image-preview": "large" },
   },
+  other: {
+    "google-adsense-account": "ca-pub-5256112741449349",
+  },
 };
 
 export const viewport: Viewport = {
@@ -71,6 +75,15 @@ export default function RootLayout({
         className="flex min-h-screen flex-col bg-surface"
       >
         {children}
+
+
+        {/* Google AdSense */}
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5256112741449349"
+          crossOrigin="anonymous"
+          strategy="lazyOnload"
+        />
       </body>
     </html>
   );
