@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from "next";
 import { Epilogue } from "next/font/google";
-import Script from "next/script";
 
 import { absoluteUrl, siteConfig } from "@/lib/site";
 
@@ -76,13 +75,21 @@ export default function RootLayout({
       >
         {children}
 
+        {/*
+          Google AdSense.
 
-        {/* Google AdSense */}
-        <Script
+          Deliberately a plain <script>, not next/script. Every next/script
+          strategy other than beforeInteractive emits only a <link rel=preload>
+          into the server-rendered HTML and injects the real tag after
+          hydration — invisible to AdSense's verification crawler, which reads
+          the raw response and does not run the client bundle. React 19 hoists
+          this async script into <head> during SSR, so it lands in the initial
+          payload where the crawler can see it.
+        */}
+        <script
           async
           src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5256112741449349"
           crossOrigin="anonymous"
-          strategy="afterInteractive"
         />
       </body>
     </html>
