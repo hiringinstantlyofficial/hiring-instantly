@@ -1,7 +1,4 @@
-import { Suspense } from "react";
-
 import { GoogleAnalytics } from "@/components/analytics/google-analytics";
-import { PageViewTracker } from "@/components/analytics/page-view-tracker";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { OrganizationJsonLd } from "@/components/seo/json-ld";
@@ -37,14 +34,6 @@ export default function PublicLayout({
       </main>
       <SiteFooter />
       <OrganizationJsonLd />
-      {/*
-        PageViewTracker reads useSearchParams, which opts its subtree out of
-        static rendering. The boundary keeps that contained to a component that
-        renders nothing, so every page around it stays prerendered.
-      */}
-      <Suspense fallback={null}>
-        <PageViewTracker />
-      </Suspense>
     </>
   );
 }

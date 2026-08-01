@@ -202,20 +202,26 @@ Three things about the wiring are deliberate:
   and granted elsewhere. The defaults are set by a plain inline `<script>`
   because they must run before `gtag.js`, and next/script's
   `beforeInteractive` only works from the root layout.
-- **Page views are sent manually.** `send_page_view: false`, with
-  `PageViewTracker` firing one `page_view` per App Router navigation. Client-side
-  navigation never reloads the document, so gtag.js's own initial page view
-  would fire once and then nothing.
+- **`gtag.js` is a plain `<script async>`, not next/script.** In the App Router,
+  `strategy="afterInteractive"` leaves only a `<link rel="preload">` in the
+  server HTML and injects the real tag after hydration. Anything that reads the
+  page without running the React bundle — Google's tag connection test, Tag
+  Assistant's fetch, verification crawlers — then sees no Google tag, which is
+  exactly how the connection test failed. React hoists the tag to `<head>` and
+  de-duplicates it; the `dataLayer` queue keeps the consent defaults ahead of
+  `config` regardless of when the loader finishes downloading.
+- **Page views come from the tag itself.** `config` keeps the default
+  `send_page_view: true`, and GA4 Enhanced measurement's "Page changes based on
+  browser history events" covers App Router navigations, which are history
+  pushes. An earlier version suppressed the page view and re-sent it from a
+  client effect; that made every hit depend on React hydrating, so a checker
+  that does not hydrate saw a property receiving nothing.
 
-**Two settings to change in the GA4 admin after deploying:**
-
-1. **Turn off Enhanced measurement → "Page changes based on browser history
-   events"** (Admin → Data streams → your stream). It fires its own `page_view`
-   on history changes and would double-count every navigation against the events
-   `PageViewTracker` sends.
-2. Confirm data is arriving in **Realtime** within a few minutes of the deploy.
-   `next dev` never sends anything, so this is the first point at which the
-   install can be verified.
+**After deploying:** confirm data is arriving in **Realtime** (Reports →
+Realtime) within a few minutes. `next dev` never sends anything, so this is the
+first point at which the install can be verified. Leave Enhanced measurement →
+"Page changes based on browser history events" **on** — it is what measures
+client-side navigation now.
 
 ## Advertising and the privacy policy
 
