@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { CalendarClock, ChevronRight, Globe } from "lucide-react";
 
 import { ApplyButton } from "@/components/jobs/apply-button";
-import { CapacityMeter } from "@/components/jobs/capacity-meter";
+// import { CapacityMeter } from "@/components/jobs/capacity-meter";
 import { JobCard } from "@/components/jobs/job-card";
 import { BreadcrumbJsonLd, JobPostingJsonLd } from "@/components/seo/json-ld";
 import { CategoryBadge } from "@/components/ui/badge";
@@ -181,14 +181,12 @@ export default async function JobDetailPage({
               </p>
             </div>
 
-            <div className="w-full sm:w-56">
-              <ApplyButton job={job} />
+            {/* <div className="w-full sm:w-56">
               <CapacityMeter
                 applied={job.applicants_count}
                 capacity={job.capacity}
-                className="mt-4"
               />
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
