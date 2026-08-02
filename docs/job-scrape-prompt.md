@@ -229,7 +229,7 @@ AdSense reviews the **site**, not the page. A perfect listing on a site that is 
 generated listings and four articles still reads as a scraper. Worth knowing before you
 apply:
 
-- **Ratio matters more than any single page.** The blog under `src/content/blog/` is the
+- **Ratio matters more than any single page.** The blog, written from the admin panel, is the
   part of the site that is unambiguously original. A reviewer weighing depth counts that
   against the listing volume — grow it before, not after, you apply.
 - **Read every listing before publishing, at least until you trust the output.** Import
