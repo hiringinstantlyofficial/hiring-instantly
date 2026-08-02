@@ -1,6 +1,13 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Briefcase, Inbox, LayoutDashboard, LogOut, Plus } from "lucide-react";
+import {
+  Briefcase,
+  Inbox,
+  LayoutDashboard,
+  LogOut,
+  Newspaper,
+  Plus,
+} from "lucide-react";
 
 import { signOut } from "@/app/actions/admin";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -10,6 +17,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/messages", label: "Messages", icon: Inbox },
 ] as const;
 

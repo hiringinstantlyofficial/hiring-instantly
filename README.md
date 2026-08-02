@@ -61,9 +61,12 @@ npx supabase db push
 | `20260729090100_storage_company_logos.sql` | `company-logos` storage bucket + policies |
 | `20260729090200_seed_sample_jobs.sql` | Sample listings — 10 active, 1 draft |
 | `20260730120000_location_trigram_index.sql` | `pg_trgm` GIN index so the `location ILIKE '%…%'` filter stops full-scanning |
+| `20260802120000_articles.sql` | `articles` table, indexes, RLS (including the schedule gate) and its `updated_at` trigger |
+| `20260802120100_seed_articles.sql` | The nine career articles, converted from the compiled modules to markdown |
 
 All are idempotent. Until they run, pages render their empty states and
-the server logs a warning rather than erroring.
+the server logs a warning rather than erroring — `/blog` included, which shows
+"No articles published yet" until the two article migrations are applied.
 
 **Two things to know before pushing:**
 
@@ -77,7 +80,10 @@ the server logs a warning rather than erroring.
   create the bucket and its four policies from the dashboard. Only logo uploads
   depend on it.
 
-`supabase db reset` re-runs all three against a local database (needs Docker).
+The article seed uses `on conflict (slug) do nothing`, so replaying it never
+overwrites an edit made in the admin panel.
+
+`supabase db reset` re-runs all of them against a local database (needs Docker).
 
 ### 4. Create the admin account
 
@@ -138,13 +144,11 @@ src/
                         /terms-and-conditions
     admin/
       login/            unauthenticated
-      (protected)/      dashboard, jobs CRUD, messages — auth-gated layout
+      (protected)/      dashboard, jobs CRUD, blog CRUD, messages — auth-gated
     actions/            server actions (contact, newsletter, revalidation)
     sitemap.ts robots.ts
   components/
     jobs/ blog/ home/ forms/ admin/ layout/ seo/ ui/ providers/
-  content/
-    blog/               the career articles themselves, one .tsx per article
   hooks/                TanStack Query hooks for the admin dashboard
   lib/                  supabase clients, query layer, validation, utils
                         (*.test.ts sit next to what they cover)
@@ -153,32 +157,74 @@ supabase/
   migrations/           schema, storage bucket, seed data, indexes
 ```
 
+## Posting a job
+
+`docs/job-scrape-prompt.md` holds the prompt that turns a careers-page URL into a
+full listing: it reads the page, keeps the verifiable facts, and writes the
+600-plus words of details the listing needs to rank.
+
+The prompt is written against **AdSense's low-value-content rules**, which is why
+it treats the source posting as facts to report rather than prose to paraphrase,
+and requires each listing to carry judgement the source page does not have — who
+the role suits, how it screens, where it leads. A listing that reads as a rewrite
+of someone else's posting is the likeliest single reason an application is
+refused. The same file ends with the site-level limits the prompt cannot fix.
+
+**Admin → Jobs → New job → Paste JSON** takes that output directly.
+`src/lib/job-import.ts` maps it onto the form — arrays become the one-per-line
+textareas, dates become `yyyy-MM-dd`, salaries like `₹6,00,000` become integers —
+and reports rather than applies anything the schema would reject, so a bad enum
+never arrives disguised as a real answer. Everything imports as a **draft**; a
+human still reviews and publishes.
+
 ## The blog
 
-`/blog` carries the career articles. They are **content compiled into the
-bundle**, not rows in Supabase: each article is a typed module under
-`src/content/blog/` exporting an `Article`, and `src/lib/blog.ts` imports them
-into a registry.
+`/blog` carries the career articles. They are rows in `public.articles`, written
+and edited from **Admin → Blog**, with the body stored as GitHub-flavoured
+markdown and rendered through `react-markdown`.
 
-That choice is deliberate. It means every article page is fully static, the
-section needs no migration and no admin CRUD screen, articles are reviewed in
-the same diff as the code, and `sitemap.ts` can list them without a database
-round trip. The cost is that publishing needs a deploy — fine for a page that
-changes weekly, unlike job listings.
+They used to be typed modules compiled into the bundle under `src/content/blog/`.
+That bought static rendering and review-in-the-diff, and cost a deploy per
+correction; the nine originals were converted to markdown and seeded in
+`supabase/migrations/20260802120100_seed_articles.sql`. `prose-legal` in
+`globals.css` still supplies the typography, so the rendered result is the same
+markup the compiled articles produced.
 
-**To add an article:** create `src/content/blog/<slug>.tsx` following any
-existing one, then add it to the `REGISTRY` array in `src/lib/blog.ts`. The
-import is what publishes it, so an unreferenced file is simply not live. Body
-copy is JSX styled by the `prose-legal` utility in `globals.css`, which the legal
-pages share.
+### Publishing is two conditions
 
-`src/lib/blog.test.ts` pins the things that fail silently: duplicate or
-non-URL-safe slugs, a `related` entry pointing at an article that no longer
-exists, and meta descriptions long enough for Google to truncate. Route-level
-details worth knowing:
+An article is public only when `status = 'published'` **and** `published_at` has
+passed. A future date is therefore a **scheduled post**: written, approved, and
+invisible until its moment, at which point it appears on the blog, in the
+sitemap and to crawlers on its own. Nothing runs at that instant — the ISR
+window on `/blog` and `/blog/[slug]` (600s) is what brings it in.
 
-- `/blog/[slug]` sets `dynamicParams = false`, so an unknown slug is a hard 404
-  rather than a rendered page a crawler could index.
+That is the honest way to spread out a launch. Back-dating articles to fake a
+publishing history, or publishing everything on one day, are the two things that
+read as manufactured to an AdSense reviewer; a queue does neither.
+
+Both conditions are enforced twice, in the RLS policy and again in every query in
+`src/lib/blog.ts`, so a query that forgot them returns nothing rather than
+leaking a draft.
+
+- **`published_at`** — the publication date and the schedule gate.
+- **`revised_at`** — the visible "Updated on" stamp, set by hand after a material
+  revision only. Feeds `dateModified`.
+- **`updated_at`** — touched by a trigger on every save. Never shown.
+
+### Details worth knowing
+
+- `/blog/[slug]` sets `dynamicParams = true` and ISR. It was `false` while
+  articles were compiled in, because the build knew every slug that could exist;
+  a post published after the build would have 404'd until a redeploy. An unknown
+  slug is still a real 404.
+- The markdown is rendered to React elements, not to an HTML string — there is no
+  `dangerouslySetInnerHTML` and no sanitiser to keep current. Raw HTML in a body
+  is inert because `rehype-raw` is deliberately not installed.
+- `related` holds slugs and is deliberately not a foreign key: it may point at a
+  post that is still a draft or still scheduled, and `pickRelated` skips what it
+  cannot resolve rather than the write failing.
+- Leave **reading time** blank and the form estimates it from the body, so it
+  cannot drift as paragraphs are added.
 - Articles carry `BlogPosting` JSON-LD with the organisation as `author` — the
   articles are team-written, and naming an individual with no verifiable byline
   is worse than naming none.

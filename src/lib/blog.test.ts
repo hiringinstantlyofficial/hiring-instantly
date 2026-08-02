@@ -1,143 +1,116 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getAllArticles,
-  getArticleBySlug,
-  getArticleSlugs,
-  getArticlesByCategory,
-  getRelatedArticles,
-  getUsedCategories,
-} from "@/lib/blog";
-import { slugify } from "@/lib/utils";
-import { ARTICLE_CATEGORIES } from "@/types/blog";
+import { pickRelated } from "@/lib/blog";
+import { estimateReadingMinutes, type ArticleSummary } from "@/types/blog";
 
-const articles = getAllArticles();
-
-/*
- * The registry is hand-authored, so the failure modes are typos: a `related`
- * slug that no longer resolves, a duplicated slug shadowing an article, a
- * description long enough for Google to truncate it. None of these throw at
- * build time and all of them are invisible until something is already indexed.
+/**
+ * Articles are database rows now, so the old registry invariants (unique slugs,
+ * resolvable `related` entries) are enforced by the unique constraint and the
+ * form schema instead of by a test. What is left here is the logic that is
+ * genuinely ours: the ordering of the "Read next" rail and the reading-time
+ * estimate.
  */
-describe("article registry", () => {
-  it("publishes articles", () => {
-    expect(articles.length).toBeGreaterThanOrEqual(5);
+
+function article(
+  slug: string,
+  overrides: Partial<ArticleSummary> = {},
+): ArticleSummary {
+  return {
+    id: slug,
+    slug,
+    title: slug,
+    description: "",
+    excerpt: "",
+    category: "job-search",
+    reading_minutes: 5,
+    tags: [],
+    related: [],
+    status: "published",
+    published_at: "2026-07-30T00:00:00.000Z",
+    revised_at: null,
+    created_at: "2026-07-30T00:00:00.000Z",
+    updated_at: "2026-07-30T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("pickRelated", () => {
+  const published = [
+    article("a", { category: "salary" }),
+    article("b", { category: "salary" }),
+    article("c", { category: "resume" }),
+    article("d", { category: "interviews" }),
+  ];
+
+  it("puts hand-picked reads first, in the order given", () => {
+    const current = article("a", { category: "salary", related: ["d", "c"] });
+
+    expect(pickRelated(published, current).map((item) => item.slug)).toEqual([
+      "d",
+      "c",
+      "b",
+    ]);
   });
 
-  it("has unique, URL-safe slugs", () => {
-    const slugs = getArticleSlugs();
-    expect(new Set(slugs).size).toBe(slugs.length);
+  it("never includes the article being read", () => {
+    const current = article("a", { category: "salary", related: ["a"] });
 
-    for (const slug of slugs) {
-      expect(slugify(slug), `"${slug}" is not already URL-safe`).toBe(slug);
-    }
+    expect(pickRelated(published, current).map((item) => item.slug)).not.toContain(
+      "a",
+    );
   });
 
-  it("orders articles newest first", () => {
-    const dates = articles.map((article) => Date.parse(article.publishedAt));
-    expect(dates).toEqual([...dates].sort((a, b) => b - a));
+  it("skips a related slug that is not published", () => {
+    const current = article("a", {
+      category: "salary",
+      related: ["scheduled-post", "c"],
+    });
+
+    expect(pickRelated(published, current).map((item) => item.slug)).toEqual([
+      "c",
+      "b",
+      "d",
+    ]);
   });
 
-  it("resolves every hand-picked related slug", () => {
-    for (const article of articles) {
-      for (const slug of article.related ?? []) {
-        expect(
-          getArticleBySlug(slug),
-          `${article.slug} links to unknown article "${slug}"`,
-        ).toBeDefined();
-        expect(slug, `${article.slug} lists itself as related`).not.toBe(
-          article.slug,
-        );
-      }
-    }
-  });
+  it("tops up with same-category articles before anything else", () => {
+    const current = article("a", { category: "salary" });
 
-  it("carries metadata that will not be truncated in search results", () => {
-    for (const article of articles) {
-      expect(article.title.length, article.slug).toBeLessThanOrEqual(70);
-      expect(article.description.length, article.slug).toBeGreaterThan(50);
-      expect(article.description.length, article.slug).toBeLessThanOrEqual(165);
-      expect(article.excerpt.length, article.slug).toBeGreaterThan(50);
-      expect(article.readingMinutes, article.slug).toBeGreaterThan(0);
-      expect(article.tags.length, article.slug).toBeGreaterThan(0);
-      expect(ARTICLE_CATEGORIES).toContain(article.category);
-    }
-  });
-
-  it("carries parseable dates, with revisions no earlier than publication", () => {
-    for (const article of articles) {
-      expect(article.publishedAt, article.slug).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(Number.isNaN(Date.parse(article.publishedAt))).toBe(false);
-
-      if (article.updatedAt) {
-        expect(article.updatedAt, article.slug).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-        expect(Date.parse(article.updatedAt)).toBeGreaterThanOrEqual(
-          Date.parse(article.publishedAt),
-        );
-      }
-    }
-  });
-});
-
-describe("getArticleBySlug", () => {
-  it("finds a published article", () => {
-    const slug = getArticleSlugs()[0]!;
-    expect(getArticleBySlug(slug)?.slug).toBe(slug);
-  });
-
-  it("returns undefined for an unknown slug, so the route can 404", () => {
-    expect(getArticleBySlug("no-such-article")).toBeUndefined();
-    expect(getArticleBySlug("")).toBeUndefined();
-  });
-});
-
-describe("getRelatedArticles", () => {
-  it("always fills the requested number of slots", () => {
-    for (const article of articles) {
-      expect(getRelatedArticles(article), article.slug).toHaveLength(3);
-    }
-  });
-
-  it("never repeats itself or duplicates a suggestion", () => {
-    for (const article of articles) {
-      const slugs = getRelatedArticles(article).map((related) => related.slug);
-      expect(slugs).not.toContain(article.slug);
-      expect(new Set(slugs).size).toBe(slugs.length);
-    }
-  });
-
-  it("honours the hand-picked order first", () => {
-    const article = articles.find((candidate) => candidate.related?.length)!;
-    const slugs = getRelatedArticles(article).map((related) => related.slug);
-    expect(slugs.slice(0, article.related!.length)).toEqual(article.related);
+    expect(pickRelated(published, current)[0]?.slug).toBe("b");
   });
 
   it("respects the limit", () => {
-    expect(getRelatedArticles(articles[0]!, 1)).toHaveLength(1);
-    expect(getRelatedArticles(articles[0]!, 0)).toHaveLength(0);
+    const current = article("a", { category: "salary" });
+
+    expect(pickRelated(published, current, 2)).toHaveLength(2);
   });
 
-  it("omits the body so a summary cannot be rendered as an article", () => {
-    const [related] = getRelatedArticles(articles[0]!);
-    expect(related).not.toHaveProperty("body");
+  it("returns an empty rail rather than throwing when nothing else exists", () => {
+    const only = article("a");
+
+    expect(pickRelated([only], only)).toEqual([]);
+  });
+
+  it("does not repeat an article that is both hand-picked and same-category", () => {
+    const current = article("a", { category: "salary", related: ["b"] });
+    const slugs = pickRelated(published, current).map((item) => item.slug);
+
+    expect(new Set(slugs).size).toBe(slugs.length);
   });
 });
 
-describe("category helpers", () => {
-  it("lists only categories that have an article", () => {
-    const used = getUsedCategories();
-    expect(new Set(used).size).toBe(used.length);
-
-    for (const category of used) {
-      expect(getArticlesByCategory(category).length).toBeGreaterThan(0);
-    }
+describe("estimateReadingMinutes", () => {
+  it("floors at one minute for anything non-empty", () => {
+    expect(estimateReadingMinutes("a few words only")).toBe(1);
+    expect(estimateReadingMinutes("")).toBe(1);
   });
 
-  it("partitions every article into exactly one used category", () => {
-    const counted = getUsedCategories().reduce(
-      (total, category) => total + getArticlesByCategory(category).length,
-      0,
-    );
-    expect(counted).toBe(articles.length);
+  it("scales with length", () => {
+    expect(estimateReadingMinutes("word ".repeat(2200))).toBe(10);
+  });
+
+  it("ignores markdown whitespace", () => {
+    const spaced = "word\n\n\n  word\t\tword";
+    expect(estimateReadingMinutes(spaced)).toBe(1);
   });
 });

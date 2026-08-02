@@ -31,16 +31,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
   ];
 
-  // Articles are compiled in, so this needs no database round trip and cannot
-  // fail — unlike the job listings below it.
-  const articleRoutes: MetadataRoute.Sitemap = getArticleSummaries().map(
-    (article) => ({
-      url: absoluteUrl(`/blog/${article.slug}`),
-      lastModified: new Date(article.updatedAt ?? article.publishedAt),
-      changeFrequency: "monthly",
-      priority: 0.6,
-    }),
-  );
+  // Published articles only, and only those whose publish date has arrived —
+  // getArticleSummaries applies both, so a scheduled post stays out of the
+  // sitemap until it is actually readable.
+  const articles = await getArticleSummaries();
+
+  const articleRoutes: MetadataRoute.Sitemap = articles.map((article) => ({
+    url: absoluteUrl(`/blog/${article.slug}`),
+    lastModified: new Date(article.revised_at ?? article.published_at),
+    changeFrequency: "monthly",
+    priority: 0.6,
+  }));
 
   const jobs = await getAllActiveJobSlugs();
 

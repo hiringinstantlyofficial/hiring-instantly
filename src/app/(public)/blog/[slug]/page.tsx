@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, Clock } from "lucide-react";
 
+import { ArticleBody } from "@/components/blog/article-body";
 import { ArticleCard } from "@/components/blog/article-card";
 import { BlogPostingJsonLd, BreadcrumbJsonLd } from "@/components/seo/json-ld";
 import { ArticleCategoryBadge } from "@/components/ui/badge";
@@ -12,14 +13,20 @@ import { absoluteUrl, siteConfig } from "@/lib/site";
 import { formatDate, truncate } from "@/lib/utils";
 
 /**
- * Articles ship in the bundle, so every one of them is fully static. With
- * `dynamicParams = false` an unknown slug is a real 404 at the edge rather than
- * a rendered page — no soft 404 for a crawler to index.
+ * ISR, like the job pages: prerendered at build, refreshed without a redeploy.
+ *
+ * `dynamicParams` has to be true now that articles live in the database. It was
+ * false while they were compiled in, because the build knew every slug that
+ * could exist; a post published or scheduled after the build would 404 under
+ * that rule until someone redeployed. An unknown slug still 404s properly —
+ * getArticleBySlug returns null and the page calls notFound().
  */
-export const dynamicParams = false;
+export const revalidate = 600;
+export const dynamicParams = true;
 
-export function generateStaticParams() {
-  return getArticleSlugs().map((slug) => ({ slug }));
+export async function generateStaticParams() {
+  const slugs = await getArticleSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
@@ -28,7 +35,7 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const article = getArticleBySlug(slug);
+  const article = await getArticleBySlug(slug);
 
   if (!article) {
     return { title: "Article not found", robots: { index: false, follow: false } };
@@ -47,8 +54,8 @@ export async function generateMetadata({
       description: article.description,
       url: absoluteUrl(canonical),
       siteName: siteConfig.name,
-      publishedTime: article.publishedAt,
-      modifiedTime: article.updatedAt ?? article.publishedAt,
+      publishedTime: article.published_at,
+      modifiedTime: article.revised_at ?? article.published_at,
       images: [
         {
           url: `${canonical}/opengraph-image`,
@@ -72,11 +79,11 @@ export default async function ArticlePage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const article = getArticleBySlug(slug);
+  const article = await getArticleBySlug(slug);
 
   if (!article) notFound();
 
-  const related = getRelatedArticles(article);
+  const related = await getRelatedArticles(article);
 
   const breadcrumbs = [
     { name: "Home", href: "/" },
@@ -129,16 +136,16 @@ export default async function ArticlePage({
                 By the {siteConfig.name} team
               </span>
               <span aria-hidden>•</span>
-              <time dateTime={article.publishedAt}>
-                {formatDate(article.publishedAt)}
+              <time dateTime={article.published_at}>
+                {formatDate(article.published_at)}
               </time>
-              {article.updatedAt ? (
+              {article.revised_at ? (
                 <>
                   <span aria-hidden>•</span>
                   <span>
                     Updated{" "}
-                    <time dateTime={article.updatedAt}>
-                      {formatDate(article.updatedAt)}
+                    <time dateTime={article.revised_at}>
+                      {formatDate(article.revised_at)}
                     </time>
                   </span>
                 </>
@@ -146,7 +153,7 @@ export default async function ArticlePage({
               <span aria-hidden>•</span>
               <span className="flex items-center gap-1.5">
                 <Clock className="size-4" aria-hidden />
-                {article.readingMinutes} min read
+                {article.reading_minutes} min read
               </span>
             </div>
           </div>
@@ -164,7 +171,7 @@ export default async function ArticlePage({
         */}
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-16">
           <article className="prose-legal min-w-0 max-w-3xl">
-            {article.body}
+            <ArticleBody markdown={article.body_markdown} />
           </article>
 
           <aside className="min-w-0">

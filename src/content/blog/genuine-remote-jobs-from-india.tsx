@@ -10,7 +10,7 @@ export const article: Article = {
   excerpt:
     "Remote-in-India and remote-for-a-foreign-company are different jobs with different pay, tax and protection. What to check in a listing, and what nobody tells you about being paid from abroad.",
   category: "job-search",
-  publishedAt: "2026-07-30",
+  publishedAt: "2026-08-04",
   readingMinutes: 12,
   tags: ["Remote Work", "Contractors", "Job Search", "Freelancing"],
   related: [
@@ -142,7 +142,7 @@ export const article: Article = {
       <ul>
         <li>
           <strong>&ldquo;Remote (India)&rdquo; versus &ldquo;Remote
-          (Anywhere).&rdquo;</strong> Many listings tagged remote are restricted
+            (Anywhere).&rdquo;</strong> Many listings tagged remote are restricted
           to countries where the company can legally employ. Check before
           investing four rounds.
         </li>

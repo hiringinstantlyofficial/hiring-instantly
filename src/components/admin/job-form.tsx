@@ -2,12 +2,14 @@
 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useForm, type FieldError } from "react-hook-form";
 import { TriangleAlert } from "lucide-react";
 
 import { revalidateJobPaths } from "@/app/actions/admin";
+import { Field, Fieldset, inputClass } from "@/components/admin/form-fields";
 import { Button } from "@/components/ui/button";
+import { parseJobImport } from "@/lib/job-import";
 import { createClient } from "@/lib/supabase/client";
 import { cn, slugify } from "@/lib/utils";
 import {
@@ -26,9 +28,6 @@ import {
   JOB_TYPE_LABELS,
   type Job,
 } from "@/types/job";
-
-const inputClass =
-  "w-full border border-line bg-white px-3.5 py-2.5 text-sm text-navy-700 placeholder:text-slate-400 focus:border-primary focus:outline-none";
 
 /** ISO timestamp -> the `yyyy-MM-dd` a date input expects. */
 function toDateInput(value: string | null): string {
@@ -86,6 +85,8 @@ export function JobForm({ job }: { job?: Job }) {
     handleSubmit,
     watch,
     setValue,
+    getValues,
+    reset,
     formState: { errors, isSubmitting, dirtyFields },
   } = useForm<JobFormValues, unknown, JobFormOutput>({
     resolver: zodResolver(jobFormSchema),
@@ -95,10 +96,15 @@ export function JobForm({ job }: { job?: Job }) {
   const title = watch("title");
   const slug = watch("slug");
 
+  // An import supplies its own slug, which is often deliberately different from
+  // the title (`backend-engineer-acme`). A ref rather than dirty state because
+  // reset() clears dirtyFields, and this has to hold across that.
+  const slugFromImport = useRef(false);
+
   // Auto-fill the slug from the title until the admin edits it by hand. On an
   // existing job the slug is left alone — changing it breaks the live URL.
   useEffect(() => {
-    if (isEdit || dirtyFields.slug) return;
+    if (isEdit || dirtyFields.slug || slugFromImport.current) return;
     setValue("slug", slugify(title ?? ""));
   }, [title, isEdit, dirtyFields.slug, setValue]);
 
@@ -162,8 +168,29 @@ export function JobForm({ job }: { job?: Job }) {
   const errorFor = (field: keyof JobFormValues) =>
     (errors[field] as FieldError | undefined)?.message;
 
+  /**
+   * Merges imported values over whatever is already typed. Returns any extra
+   * warnings the panel should show alongside the parser's own.
+   */
+  const applyImport = (values: Partial<JobFormValues>) => {
+    const extra: string[] = [];
+    const next = { ...values };
+
+    // On an existing job the slug is the live URL, so an import never moves it.
+    if (isEdit && next.slug && next.slug !== getValues("slug")) {
+      delete next.slug;
+      extra.push("Slug left unchanged — editing it would break the live URL");
+    }
+
+    if (next.slug) slugFromImport.current = true;
+    reset({ ...getValues(), ...next });
+    return extra;
+  };
+
   return (
     <form onSubmit={onSubmit} noValidate className="space-y-6">
+      <ImportPanel onApply={applyImport} />
+
       {formError ? (
         <div
           role="alert"
@@ -501,53 +528,105 @@ export function JobForm({ job }: { job?: Job }) {
   );
 }
 
-function Fieldset({
-  legend,
-  children,
+/**
+ * Paste-JSON shortcut for the scrape prompt in docs/job-scrape-prompt.md.
+ * Collapsed by default so it stays out of the way of manual entry.
+ */
+function ImportPanel({
+  onApply,
 }: {
-  legend: string;
-  children: React.ReactNode;
+  onApply: (values: Partial<JobFormValues>) => string[];
 }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [warnings, setWarnings] = useState<string[]>([]);
+  const [filled, setFilled] = useState<number | null>(null);
+
+  const apply = () => {
+    const result = parseJobImport(text);
+
+    if (!result.ok) {
+      setError(result.error);
+      setWarnings([]);
+      setFilled(null);
+      return;
+    }
+
+    const extra = onApply(result.values);
+    setError(null);
+    setWarnings([...result.warnings, ...extra]);
+    setFilled(Object.keys(result.values).length);
+  };
+
+  const reset = () => {
+    setText("");
+    setError(null);
+    setWarnings([]);
+    setFilled(null);
+  };
+
   return (
-    <fieldset className="border border-line bg-white p-6">
-      <legend className="px-2 text-sm font-semibold uppercase tracking-wide text-slate-400">
-        {legend}
-      </legend>
-      <div className="grid gap-5 sm:grid-cols-2">{children}</div>
-    </fieldset>
+    <section className="border border-line bg-white p-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">
+            Import from JSON
+          </h2>
+          <p className="mt-1 text-xs text-slate-400">
+            Paste the JSON from the scrape prompt to fill every field below.
+            Nothing is saved until you submit.
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={() => setOpen(!open)}>
+          {open ? "Hide" : "Paste JSON"}
+        </Button>
+      </div>
+
+      {open ? (
+        <div className="mt-4 space-y-3">
+          <textarea
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            rows={8}
+            spellCheck={false}
+            placeholder='{ "title": "Backend Engineer", … }'
+            className={cn(inputClass, "resize-y font-mono text-xs")}
+          />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button size="sm" onClick={apply} disabled={!text.trim()}>
+              Fill the form
+            </Button>
+            <Button variant="ghost" size="sm" onClick={reset} disabled={!text}>
+              Clear
+            </Button>
+          </div>
+
+          {error ? (
+            <p role="alert" className="text-sm text-accent-red">
+              {error}
+            </p>
+          ) : null}
+
+          {filled !== null ? (
+            <div className="space-y-2 border border-line bg-slate-50 p-3">
+              <p className="text-sm text-navy-700">
+                Filled {filled} field{filled === 1 ? "" : "s"}. Review everything
+                below before saving.
+              </p>
+              {warnings.length ? (
+                <ul className="list-disc space-y-1 pl-5 text-xs text-slate-500">
+                  {warnings.map((warning) => (
+                    <li key={warning}>{warning}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }
 
-function Field({
-  label,
-  children,
-  error,
-  hint,
-  required,
-  full,
-}: {
-  label: string;
-  children: React.ReactNode;
-  error?: string;
-  hint?: string;
-  required?: boolean;
-  full?: boolean;
-}) {
-  return (
-    <div className={full ? "sm:col-span-2" : undefined}>
-      <label className="mb-1.5 block text-sm font-semibold text-navy-700">
-        {label}
-        {required ? <span className="text-accent-red"> *</span> : null}
-      </label>
-      {children}
-      {hint && !error ? (
-        <p className="mt-1.5 text-xs text-slate-400">{hint}</p>
-      ) : null}
-      {error ? (
-        <p className="mt-1.5 text-sm text-accent-red" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
-  );
-}

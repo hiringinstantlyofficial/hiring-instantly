@@ -8,7 +8,7 @@ export const article: Article = {
   excerpt:
     "The costly mistake is treating a career change as a reset. The adjacent-move strategy, how to reframe experience the new field will value, and what a realistic pay dip looks like.",
   category: "career-growth",
-  publishedAt: "2026-07-30",
+  publishedAt: "2026-08-01",
   readingMinutes: 11,
   tags: ["Career Change", "Career Growth", "Upskilling", "Mid-Career"],
   related: [

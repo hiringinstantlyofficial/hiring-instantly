@@ -8,7 +8,7 @@ export const article: Article = {
   excerpt:
     "The experience requirement on an entry-level listing is usually a preference, not a gate. What to build, how many places to apply, and how to ask a stranger for a referral without being ignored.",
   category: "job-search",
-  publishedAt: "2026-07-30",
+  publishedAt: "2026-08-03",
   readingMinutes: 11,
   tags: ["Freshers", "Job Search", "Internships", "Referrals"],
   related: [

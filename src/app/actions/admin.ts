@@ -3,6 +3,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { ARTICLES_CACHE_TAG } from "@/lib/blog";
 import { JOBS_CACHE_TAG } from "@/lib/jobs";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -23,6 +24,18 @@ export async function revalidateJobPaths(slug?: string) {
   revalidatePath("/companies");
   revalidatePath("/sitemap.xml");
   if (slug) revalidatePath(`/jobs/${slug}`);
+}
+
+/**
+ * The same two layers for the blog. Scheduled posts still need the route's own
+ * revalidate window to roll them in — nothing calls this when a post's moment
+ * simply arrives, because no write happens at that instant.
+ */
+export async function revalidateArticlePaths(slug?: string) {
+  revalidateTag(ARTICLES_CACHE_TAG);
+  revalidatePath("/blog");
+  revalidatePath("/sitemap.xml");
+  if (slug) revalidatePath(`/blog/${slug}`);
 }
 
 export async function signOut() {

@@ -31,7 +31,7 @@ export function ArticleCard({
         <ArticleCategoryBadge category={article.category} />
         <span className="flex items-center gap-1.5 text-sm text-slate-400">
           <Clock className="size-4" aria-hidden />
-          {article.readingMinutes} min read
+          {article.reading_minutes} min read
         </span>
       </div>
 
@@ -60,10 +60,10 @@ export function ArticleCard({
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-4">
         <time
-          dateTime={article.publishedAt}
+          dateTime={article.published_at}
           className="text-sm text-slate-400"
         >
-          {formatDate(article.publishedAt)}
+          {formatDate(article.published_at)}
         </time>
         <span className="flex items-center gap-1.5 text-sm font-semibold text-primary">
           Read article

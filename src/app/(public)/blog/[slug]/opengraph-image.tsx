@@ -9,8 +9,9 @@ export const contentType = "image/png";
 export const alt = "Career advice";
 
 /** Prerendered alongside the article pages, so sharing never waits on a render. */
-export function generateStaticParams() {
-  return getArticleSlugs().map((slug) => ({ slug }));
+export async function generateStaticParams() {
+  const slugs = await getArticleSlugs();
+  return slugs.map((slug) => ({ slug }));
 }
 
 /** Social card for each article, drawn in the site's palette. */
@@ -20,7 +21,7 @@ export default async function ArticleOpengraphImage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const article = getArticleBySlug(slug);
+  const article = await getArticleBySlug(slug);
 
   const title = article?.title ?? "Career advice";
   const category = article
@@ -84,7 +85,7 @@ export default async function ArticleOpengraphImage({
         </div>
 
         <div style={{ fontSize: 28, color: "#515B6F", display: "flex" }}>
-          {article ? `${article.readingMinutes} min read` : "Career advice"} ·
+          {article ? `${article.reading_minutes} min read` : "Career advice"} ·
           Jobs and career guides for India
         </div>
       </div>

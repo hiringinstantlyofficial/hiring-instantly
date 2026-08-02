@@ -1,4 +1,9 @@
 import type {
+  Article,
+  ArticleCategory,
+  ArticleStatus,
+} from "@/types/blog";
+import type {
   ExperienceLevel,
   Job,
   JobCategory,
@@ -58,6 +63,24 @@ type JobInsert = {
   updated_at?: string;
 };
 
+type ArticleInsert = {
+  id?: string;
+  slug: string;
+  title: string;
+  description: string;
+  excerpt: string;
+  category: ArticleCategory;
+  body_markdown: string;
+  reading_minutes?: number;
+  tags?: string[];
+  related?: string[];
+  status?: ArticleStatus;
+  published_at?: string;
+  revised_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
 type ContactSubmissionRow = {
   id: string;
   name: string;
@@ -107,6 +130,12 @@ export type Database = {
         Row: JobRow;
         Insert: JobInsert;
         Update: Partial<JobInsert>;
+        Relationships: [];
+      };
+      articles: {
+        Row: Article;
+        Insert: ArticleInsert;
+        Update: Partial<ArticleInsert>;
         Relationships: [];
       };
       contact_submissions: {

@@ -29,10 +29,17 @@ const breadcrumbs = [
   { name: "Career Advice", href: "/blog" },
 ];
 
-export default function BlogIndexPage() {
-  const articles = getArticleSummaries();
+/**
+ * ISR, on the same cadence as the job listings. The window is also what brings
+ * a scheduled post in: nothing writes to the database at the moment its
+ * published_at passes, so the page has to come round and re-ask.
+ */
+export const revalidate = 600;
+
+export default async function BlogIndexPage() {
+  const articles = await getArticleSummaries();
   const [lead, ...rest] = articles;
-  const categories = getUsedCategories();
+  const categories = await getUsedCategories();
 
   return (
     <>

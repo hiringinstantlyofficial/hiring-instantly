@@ -100,8 +100,8 @@ export function BlogPostingJsonLd({ article }: { article: ArticleSummary }) {
         description: article.description,
         articleSection: ARTICLE_CATEGORY_LABELS[article.category],
         keywords: article.tags.join(", "),
-        datePublished: article.publishedAt,
-        dateModified: article.updatedAt ?? article.publishedAt,
+        datePublished: article.published_at,
+        dateModified: article.revised_at ?? article.published_at,
         inLanguage: "en-IN",
         image: absoluteUrl(`/blog/${article.slug}/opengraph-image`),
         author: { "@type": "Organization", name: siteConfig.name, url: siteConfig.url },
@@ -139,8 +139,8 @@ export function BlogJsonLd({ articles }: { articles: ArticleSummary[] }) {
           url: absoluteUrl(`/blog/${article.slug}`),
           headline: article.title,
           description: article.description,
-          datePublished: article.publishedAt,
-          dateModified: article.updatedAt ?? article.publishedAt,
+          datePublished: article.published_at,
+          dateModified: article.revised_at ?? article.published_at,
         })),
       }}
     />

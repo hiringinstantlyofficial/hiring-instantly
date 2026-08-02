@@ -1,6 +1,89 @@
 import { describe, expect, it } from "vitest";
 
-import { contactSchema, jobFormSchema, loginSchema } from "@/lib/validations";
+import {
+  articleFormSchema,
+  contactSchema,
+  jobFormSchema,
+  loginSchema,
+} from "@/lib/validations";
+
+/** A minimal article payload that passes every required field. */
+function validArticle(overrides: Record<string, unknown> = {}) {
+  return {
+    title: "How to read an Indian salary offer",
+    slug: "how-to-read-an-indian-salary-offer",
+    description: "x".repeat(60),
+    excerpt: "x".repeat(60),
+    category: "salary",
+    body_markdown: "word ".repeat(400),
+    reading_minutes: "",
+    tags: "Salary, CTC",
+    related: "",
+    status: "draft",
+    published_at: "",
+    revised_at: "",
+    ...overrides,
+  };
+}
+
+describe("articleFormSchema", () => {
+  it("accepts a publish date in the future — that is a scheduled post", () => {
+    const nextYear = "2027-01-15";
+    const result = articleFormSchema.safeParse(
+      validArticle({ status: "published", published_at: nextYear }),
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(Date.parse(result.data.published_at!)).toBeGreaterThan(Date.now());
+    }
+  });
+
+  it("splits tags and related slugs into arrays", () => {
+    const result = articleFormSchema.safeParse(
+      validArticle({ tags: "Salary, CTC ,  PF", related: "a-slug, b-slug" }),
+    );
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.tags).toEqual(["Salary", "CTC", "PF"]);
+      expect(result.data.related).toEqual(["a-slug", "b-slug"]);
+    }
+  });
+
+  it("rejects a meta description Google would truncate", () => {
+    const result = articleFormSchema.safeParse(
+      validArticle({ description: "x".repeat(161) }),
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a body too short to be worth publishing", () => {
+    const result = articleFormSchema.safeParse(
+      validArticle({ body_markdown: "Too short to rank." }),
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a slug that is not URL-safe", () => {
+    const result = articleFormSchema.safeParse(
+      validArticle({ slug: "Not A Slug" }),
+    );
+
+    expect(result.success).toBe(false);
+  });
+
+  it("leaves reading_minutes null when blank, for the estimate to fill", () => {
+    const result = articleFormSchema.safeParse(validArticle());
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.reading_minutes).toBeNull();
+    }
+  });
+});
 
 /** A minimal job payload that passes every required field. */
 function validJob(overrides: Record<string, unknown> = {}) {

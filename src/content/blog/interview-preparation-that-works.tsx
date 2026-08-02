@@ -10,7 +10,7 @@ export const article: Article = {
   excerpt:
     "Preparation is triage, not memorisation. The five stories worth having ready, the most common failure mode nobody warns you about, and how to answer a question you cannot answer.",
   category: "interviews",
-  publishedAt: "2026-07-30",
+  publishedAt: "2026-08-05",
   readingMinutes: 12,
   tags: ["Interviews", "Preparation", "Communication"],
   related: [

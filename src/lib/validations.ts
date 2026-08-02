@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { ARTICLE_CATEGORIES, ARTICLE_STATUSES } from "@/types/blog";
 import {
   EXPERIENCE_LEVELS,
   JOB_CATEGORIES,
@@ -213,6 +214,61 @@ export const jobFormSchema = z
 
 export type JobFormValues = z.input<typeof jobFormSchema>;
 export type JobFormOutput = z.output<typeof jobFormSchema>;
+
+/**
+ * The admin article form.
+ *
+ * The one rule worth spelling out is `published_at`: a date in the future is
+ * legal and meaningful. It schedules the post — the row is written now and
+ * stays invisible until the date arrives — so nothing here rejects it.
+ */
+export const articleFormSchema = z.object({
+  title: z.string().trim().min(8, "Give the article a title").max(200),
+  slug: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (value) => !value || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value),
+      "Use lowercase letters, numbers and hyphens only",
+    ),
+
+  // Bounded at 160 rather than left open: this is the meta description, and
+  // Google truncates it around there.
+  description: z
+    .string()
+    .trim()
+    .min(50, "Write a meta description of at least 50 characters")
+    .max(160, "Keep the meta description under 160 characters"),
+  excerpt: z
+    .string()
+    .trim()
+    .min(50, "Write an excerpt of at least 50 characters")
+    .max(500, "Keep the excerpt under 500 characters"),
+
+  category: z.enum(ARTICLE_CATEGORIES),
+
+  body_markdown: z
+    .string()
+    .trim()
+    .min(
+      1000,
+      "An article this short will not rank and will not help anyone — write at least ~1000 characters",
+    ),
+
+  reading_minutes: optionalNumber,
+  tags: commaToArray,
+  related: commaToArray,
+
+  status: z.enum(ARTICLE_STATUSES),
+  published_at: optionalDate,
+  revised_at: optionalDate,
+});
+
+export type ArticleFormValues = z.input<typeof articleFormSchema>;
+export type ArticleFormOutput = z.output<typeof articleFormSchema>;
 
 export const loginSchema = z.object({
   email: z.string().trim().min(1, "Enter your email").email("Enter a valid email"),

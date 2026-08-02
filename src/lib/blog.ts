@@ -1,76 +1,117 @@
-import { article as changingCareers } from "@/content/blog/changing-careers-without-starting-over";
-import { article as ctcVsInHand } from "@/content/blog/ctc-vs-in-hand-salary";
-import { article as firstJob } from "@/content/blog/first-job-without-experience";
-import { article as remoteJobs } from "@/content/blog/genuine-remote-jobs-from-india";
-import { article as interviewPrep } from "@/content/blog/interview-preparation-that-works";
-import { article as negotiateSalary } from "@/content/blog/negotiate-salary-in-india";
-import { article as noticePeriod } from "@/content/blog/notice-period-and-relieving-letter";
-import { article as resumeGuide } from "@/content/blog/resume-that-gets-shortlisted";
-import { article as fakeJobPosting } from "@/content/blog/spot-a-fake-job-posting";
-import type { Article, ArticleCategory, ArticleSummary } from "@/types/blog";
+import { cache } from "react";
+
+import { captureError } from "@/lib/observability";
+import { createSupabasePublicClient } from "@/lib/supabase/server";
+import type {
+  Article,
+  ArticleCategory,
+  ArticleSummary,
+} from "@/types/blog";
 
 /**
- * Every published article, in editorial order.
+ * Cache tag shared by every read in this module. The admin mutations flush it
+ * through revalidateArticlePaths(), so an edit is live immediately rather than
+ * waiting out the route's revalidate window.
+ */
+export const ARTICLES_CACHE_TAG = "articles";
+
+/** Every column except the body — enough for cards, lists and metadata. */
+const SUMMARY_COLUMNS =
+  "id, slug, title, description, excerpt, category, reading_minutes, tags, related, status, published_at, revised_at, created_at, updated_at";
+
+function reportError(context: string, error: { code?: string } | null): void {
+  if (error?.code === "PGRST205" || error?.code === "42P01") {
+    captureError(error, {
+      scope: `blog.${context}`,
+      severity: "warning",
+      meta: {
+        hint: "The 'articles' table is missing. Apply supabase/migrations in the Supabase SQL editor.",
+      },
+    });
+    return;
+  }
+  captureError(error, { scope: `blog.${context}` });
+}
+
+/**
+ * The publication gate, applied to every public read below as
+ * `.eq("status", "published").lte("published_at", nowIso())`.
  *
- * New articles are added here — the import is what publishes them, so there is
- * no directory scan to keep in step and an unreferenced file simply is not live.
- * Order within the array breaks ties between articles sharing a publish date.
+ * Both halves matter: `status` is the editorial decision, `published_at` is the
+ * schedule. A row dated in the future is a queued post — written, approved, and
+ * deliberately not visible yet. RLS enforces the same pair, so a query that
+ * forgot it would still not leak a draft; repeating it here means the failure
+ * mode is an empty list rather than a policy violation.
+ *
+ * Read per call rather than hoisted to a module constant: these functions are
+ * memoised per request, and a module-level timestamp would freeze the schedule
+ * at the moment the server booted.
  */
-const REGISTRY: Article[] = [
-  resumeGuide,
-  ctcVsInHand,
-  fakeJobPosting,
-  interviewPrep,
-  negotiateSalary,
-  firstJob,
-  noticePeriod,
-  remoteJobs,
-  changingCareers,
-];
+function nowIso(): string {
+  return new Date().toISOString();
+}
 
 /**
- * Newest first. `Array.prototype.sort` is stable, so same-day articles keep
- * their REGISTRY order rather than shuffling between builds — which matters
- * because a launch publishes several on one date.
+ * Published articles, newest first.
+ *
+ * `cache` is React's per-request memo, so the index page and its JSON-LD block
+ * share one round trip.
  */
-const articles: Article[] = [...REGISTRY].sort(
-  (a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt),
+export const getArticleSummaries = cache(async (): Promise<ArticleSummary[]> => {
+  const supabase = createSupabasePublicClient();
+
+  const { data, error } = await supabase
+    .from("articles")
+    .select(SUMMARY_COLUMNS)
+    .eq("status", "published")
+    .lte("published_at", nowIso())
+    .order("published_at", { ascending: false });
+
+  if (error) {
+    reportError("getArticleSummaries", error);
+    return [];
+  }
+
+  return (data as ArticleSummary[] | null) ?? [];
+});
+
+export const getArticleBySlug = cache(
+  async (slug: string): Promise<Article | null> => {
+    const supabase = createSupabasePublicClient();
+
+    const { data, error } = await supabase
+      .from("articles")
+      .select("*")
+      .eq("slug", slug)
+      .eq("status", "published")
+      .lte("published_at", nowIso())
+      .maybeSingle();
+
+    if (error) {
+      reportError(`getArticleBySlug(${slug})`, error);
+      return null;
+    }
+
+    return (data as Article | null) ?? null;
+  },
 );
 
-const bySlug = new Map(articles.map((article) => [article.slug, article]));
-
-/** Drops `body` so callers that only need metadata cannot accidentally render it. */
-function toSummary(article: Article): ArticleSummary {
-  const { body, ...summary } = article;
-  void body; // discarded deliberately — a summary must not carry renderable JSX
-  return summary;
-}
-
-export function getAllArticles(): Article[] {
-  return articles;
-}
-
-export function getArticleSummaries(): ArticleSummary[] {
-  return articles.map(toSummary);
-}
-
-export function getArticleBySlug(slug: string): Article | undefined {
-  return bySlug.get(slug);
-}
-
-export function getArticleSlugs(): string[] {
+export async function getArticleSlugs(): Promise<string[]> {
+  const articles = await getArticleSummaries();
   return articles.map((article) => article.slug);
 }
 
 /** Newest first within a category — used for the index page groupings. */
-export function getArticlesByCategory(
+export async function getArticlesByCategory(
   category: ArticleCategory,
-): ArticleSummary[] {
-  return articles.filter((a) => a.category === category).map(toSummary);
+): Promise<ArticleSummary[]> {
+  const articles = await getArticleSummaries();
+  return articles.filter((article) => article.category === category);
 }
 
-/** Categories that actually have an article, in the order they first appear. */
-export function getUsedCategories(): ArticleCategory[] {
+/** Categories that actually have a published article, in publication order. */
+export async function getUsedCategories(): Promise<ArticleCategory[]> {
+  const articles = await getArticleSummaries();
   return [...new Set(articles.map((article) => article.category))];
 }
 
@@ -78,25 +119,42 @@ export function getUsedCategories(): ArticleCategory[] {
  * Hand-picked related reads first, then same-category articles, then the newest
  * of whatever is left — so the foot of an article is never empty and never
  * repeats the article you are already on.
+ *
+ * A `related` slug pointing at a draft or scheduled post simply does not match
+ * anything in `published` and is skipped, which is why the column is not a
+ * foreign key. Split from the fetch below so the ordering rules can be tested
+ * without a database.
  */
-export function getRelatedArticles(
-  article: Article,
+export function pickRelated(
+  published: ArticleSummary[],
+  article: Pick<Article, "slug" | "category" | "related">,
   limit = 3,
 ): ArticleSummary[] {
-  const picked: Article[] = [];
+  const articles = published;
+  const bySlug = new Map(articles.map((entry) => [entry.slug, entry]));
+
+  const picked: ArticleSummary[] = [];
   const seen = new Set([article.slug]);
 
-  const take = (candidate: Article | undefined) => {
+  const take = (candidate: ArticleSummary | undefined) => {
     if (!candidate || seen.has(candidate.slug) || picked.length >= limit) return;
     seen.add(candidate.slug);
     picked.push(candidate);
   };
 
-  for (const slug of article.related ?? []) take(bySlug.get(slug));
+  for (const slug of article.related) take(bySlug.get(slug));
   for (const candidate of articles) {
     if (candidate.category === article.category) take(candidate);
   }
   for (const candidate of articles) take(candidate);
 
-  return picked.map(toSummary);
+  return picked;
+}
+
+/** `pickRelated` over the published list. */
+export async function getRelatedArticles(
+  article: Pick<Article, "slug" | "category" | "related">,
+  limit = 3,
+): Promise<ArticleSummary[]> {
+  return pickRelated(await getArticleSummaries(), article, limit);
 }

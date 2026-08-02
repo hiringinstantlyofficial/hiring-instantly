@@ -8,7 +8,7 @@ export const article: Article = {
   excerpt:
     "Most candidates lose money in the first five minutes of the first call. Timing, anchoring, what is negotiable besides base pay, and scripts for the four conversations you will actually have.",
   category: "salary",
-  publishedAt: "2026-07-30",
+  publishedAt: "2026-08-06",
   readingMinutes: 12,
   tags: ["Salary", "Negotiation", "Offer Letters", "CTC"],
   related: [
@@ -34,7 +34,7 @@ export const article: Article = {
       <h2>The one rule about timing</h2>
       <p>
         <strong>Your leverage exists only between the offer and your
-        acceptance.</strong>
+          acceptance.</strong>
       </p>
       <p>
         Before an offer, the company has no sunk cost in you and can move to the
@@ -176,7 +176,7 @@ export const article: Article = {
         </li>
         <li>
           <strong>An external basis plus a specific claim about your
-          fit.</strong> Not &ldquo;I deserve more.&rdquo;
+            fit.</strong> Not &ldquo;I deserve more.&rdquo;
         </li>
         <li>
           <strong>A close.</strong> &ldquo;I&apos;ll sign today&rdquo; converts
