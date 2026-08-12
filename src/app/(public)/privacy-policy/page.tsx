@@ -4,7 +4,7 @@ import { LegalLayout, type LegalSection } from "@/components/layout/legal-layout
 import { PageHeader } from "@/components/layout/page-header";
 import { siteConfig } from "@/lib/site";
 
-const LAST_UPDATED = "2026-07-30";
+const LAST_UPDATED = "2026-08-12";
 
 export const metadata: Metadata = {
   title: "Privacy Policy",
@@ -291,10 +291,21 @@ const sections: LegalSection[] = [
           Google requires publishers to obtain consent before setting
           non-essential advertising cookies for visitors in the European
           Economic Area, the United Kingdom and Switzerland, under its EU user
-          consent policy. If you are visiting from one of those regions,
-          advertising and analytics cookies are set only after you have given
-          consent through the notice presented on the site, and you can withdraw
-          or change that consent at any time through the same notice.
+          consent policy. We do not currently present a consent notice, so we
+          take the stricter route instead: using Google Consent Mode, advertising
+          and analytics storage is set to <em>denied</em> by default for visitors
+          from those regions, and nothing on this site turns it back on. In
+          practice that means no advertising or analytics cookies are stored on
+          your device, no advertising identifier is associated with you, and any
+          ads you see are non-personalised. Your browser still contacts Google to
+          load those scripts, which reveals the technical data described under{" "}
+          <a href="#advertising">Advertising</a> above.
+        </p>
+        <p>
+          If we introduce a consent notice in future, we will update this section
+          before it goes live. Non-essential cookies will stay disabled for
+          visitors in those regions unless and until consent has been given, and
+          the notice will let you withdraw or change that choice at any time.
         </p>
         <p>
           If you are in India, we rely on your consent for non-essential cookies

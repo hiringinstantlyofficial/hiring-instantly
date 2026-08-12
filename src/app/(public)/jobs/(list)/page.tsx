@@ -5,6 +5,11 @@ import { FilterSidebar } from "@/components/jobs/filter-sidebar";
 import { JobList } from "@/components/jobs/job-list";
 import { JobPagination } from "@/components/jobs/job-pagination";
 import { JobSearchBar } from "@/components/jobs/job-search-bar";
+import { MobileInfiniteJobs } from "@/components/jobs/mobile-infinite-jobs";
+import {
+  MobileJobsBar,
+  MobileJobsPanel,
+} from "@/components/jobs/mobile-jobs-bar";
 import { ResultsToolbar } from "@/components/jobs/results-toolbar";
 import { getJobs, JOBS_PER_PAGE, parseJobFilters } from "@/lib/jobs";
 import { siteConfig } from "@/lib/site";
@@ -56,6 +61,10 @@ export async function generateMetadata({
   const isFiltered = [
     "q",
     "location",
+    // `company` included deliberately: /companies/<slug> is the canonical
+    // surface for "every role at X", so this listing should not compete with
+    // it in the index.
+    "company",
     "jobTypes",
     "categories",
     "jobLevels",
@@ -96,7 +105,13 @@ export default async function JobsPage({
     perPage: view === "grid" ? 9 : JOBS_PER_PAGE,
   });
 
-  const heading = describeFilters(params);
+  // With ?company= active the slug alone would render as "All Jobs". The
+  // company's real name comes off the embedded row on the first result, which
+  // is already loaded — no extra query to title the page correctly.
+  const companyName = filters.company ? jobs[0]?.company?.name : undefined;
+  const heading = companyName
+    ? `Jobs at ${companyName}`
+    : describeFilters(params);
 
   return (
     <>
@@ -106,13 +121,23 @@ export default async function JobsPage({
           <p className="mt-1 text-sm text-slate-400">
             {total} {total === 1 ? "opening" : "openings"} available
           </p>
-          <div className="mt-6 max-w-4xl">
+          <div className="mt-6 hidden max-w-4xl lg:block">
             <Suspense fallback={<div className="skeleton h-[78px] w-full" />}>
               <JobSearchBar variant="inline" />
             </Suspense>
           </div>
+
+          {/* Small screens get search and filters here, centred on the hero
+              background. Once it scrolls away <MobileJobsBar> stands in. */}
+          <Suspense fallback={<div className="mt-6 skeleton h-[150px] w-full lg:hidden" />}>
+            <MobileJobsPanel facets={facets} />
+          </Suspense>
         </div>
       </section>
+
+      <Suspense fallback={null}>
+        <MobileJobsBar facets={facets} />
+      </Suspense>
 
       <section className="container-page py-10 lg:py-14">
         <div className="flex flex-col gap-8 lg:flex-row lg:gap-10">
@@ -123,11 +148,21 @@ export default async function JobsPage({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <p className="text-sm text-slate-400">
-                Showing{" "}
-                <span className="font-semibold text-navy-700">
-                  {jobs.length}
-                </span>{" "}
-                of {total} results
+                {/* Mobile keeps the total alone. The infinite scroll makes the
+                    rendered count climb as you read, so "showing 7 of 32" is
+                    stale the moment it paints — and it counts a page size the
+                    reader never chose. The total is the one stable fact. */}
+                <span className="lg:hidden">
+                  <span className="font-semibold text-navy-700">{total}</span>{" "}
+                  {total === 1 ? "result" : "results"}
+                </span>
+                <span className="hidden lg:inline">
+                  Showing{" "}
+                  <span className="font-semibold text-navy-700">
+                    {jobs.length}
+                  </span>{" "}
+                  of {total} {total === 1 ? "result" : "results"}
+                </span>
               </p>
               <Suspense fallback={<div className="skeleton h-8 w-56" />}>
                 <ResultsToolbar view={view} />
@@ -138,11 +173,22 @@ export default async function JobsPage({
               <JobList jobs={jobs} view={view} />
             </div>
 
-            <JobPagination
+            {/* Keyed on the query so applying a filter drops whatever the
+                previous search had scrolled in, rather than appending to it. */}
+            <MobileInfiniteJobs
+              key={JSON.stringify(params)}
+              params={params}
               page={page}
               totalPages={totalPages}
-              searchParams={params}
-            />
+              view={view}
+              seedIds={jobs.map((job) => job.id)}
+            >
+              <JobPagination
+                page={page}
+                totalPages={totalPages}
+                searchParams={params}
+              />
+            </MobileInfiniteJobs>
           </div>
         </div>
       </section>

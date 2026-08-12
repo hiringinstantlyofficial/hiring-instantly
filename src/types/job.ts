@@ -1,3 +1,5 @@
+import type { CompanyRef } from "@/types/company";
+
 export const JOB_TYPES = [
   "full-time",
   "part-time",
@@ -98,10 +100,19 @@ export type Job = {
   slug: string;
   title: string;
 
+  company_id: string;
+  /**
+   * A mirror of `companies.name`, maintained by a database trigger — never
+   * written by the app.
+   *
+   * It exists because `jobs.search_vector` is a generated column built from
+   * this value, and a generated column cannot contain a subquery, so it cannot
+   * reach through the company_id foreign key. Keeping the name denormalised is
+   * also what lets the admin table's ilike filter search by company without a
+   * join. Everything else about a company (logo, website, description) lives on
+   * the company row alone.
+   */
   company_name: string;
-  company_logo_url: string | null;
-  company_website: string | null;
-  company_description: string | null;
 
   location: string;
   job_type: JobType;
@@ -136,15 +147,27 @@ export type Job = {
   updated_at: string;
 };
 
-/** Fields the admin form writes. Server-managed columns are omitted. */
+/**
+ * A job with its company embedded, which is what every read in lib/jobs.ts
+ * actually returns. `company` is nullable only because PostgREST types an
+ * embedded relation that way; the FK is NOT NULL, so in practice it is present.
+ */
+export type JobWithCompany = Job & { company: CompanyRef | null };
+
+/**
+ * Fields the admin form writes. Server-managed columns are omitted, and so is
+ * company_name — the trigger derives it from company_id.
+ */
 export type JobInput = Omit<
   Job,
-  "id" | "created_at" | "updated_at" | "applicants_count"
+  "id" | "created_at" | "updated_at" | "applicants_count" | "company_name"
 > & { applicants_count?: number };
 
 export interface JobFilters {
   q?: string;
   location?: string;
+  /** Company slug, from /jobs?company=acme — the "all roles at X" link. */
+  company?: string;
   jobTypes?: JobType[];
   categories?: JobCategory[];
   jobLevels?: JobLevel[];
@@ -155,12 +178,16 @@ export interface JobFilters {
   sort?: JobSort;
 }
 
-export const JOB_SORTS = ["relevant", "newest", "salary-high"] as const;
+/** Listed in dropdown order, so the default sits at the top. */
+export const JOB_SORTS = ["newest", "relevant", "salary-high"] as const;
 export type JobSort = (typeof JOB_SORTS)[number];
 
+/** The board's default: a job board is only as good as its freshest listing. */
+export const DEFAULT_JOB_SORT: JobSort = "newest";
+
 export const JOB_SORT_LABELS: Record<JobSort, string> = {
-  relevant: "Most relevant",
-  newest: "Newest",
+  newest: "Newest first",
+  relevant: "Featured first",
   "salary-high": "Highest salary",
 };
 
@@ -173,7 +200,7 @@ export interface FacetCounts {
 }
 
 export interface JobListResult {
-  jobs: Job[];
+  jobs: JobWithCompany[];
   total: number;
   page: number;
   perPage: number;

@@ -168,7 +168,7 @@ export function JobTable({ limit }: { limit?: number }) {
                     <div className="flex items-center gap-3">
                       <CompanyLogo
                         name={job.company_name}
-                        logoUrl={job.company_logo_url}
+                        logoUrl={job.company?.logo_url}
                         size={36}
                       />
                       <div className="min-w-0">

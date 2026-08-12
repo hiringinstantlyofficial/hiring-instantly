@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, Clock } from "lucide-react";
 
 import { ArticleCategoryBadge } from "@/components/ui/badge";
-import { cn, formatDate } from "@/lib/utils";
+import { cn, formatDate, toISTISOString } from "@/lib/utils";
 import type { ArticleSummary } from "@/types/blog";
 
 /**
@@ -60,7 +60,7 @@ export function ArticleCard({
 
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line-soft pt-4">
         <time
-          dateTime={article.published_at}
+          dateTime={toISTISOString(article.published_at)}
           className="text-sm text-slate-400"
         >
           {formatDate(article.published_at)}

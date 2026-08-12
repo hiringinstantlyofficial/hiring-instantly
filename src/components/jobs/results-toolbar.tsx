@@ -6,7 +6,12 @@ import { useTransition } from "react";
 
 import { withParams } from "@/lib/search-params";
 import { cn } from "@/lib/utils";
-import { JOB_SORTS, JOB_SORT_LABELS, type JobSort } from "@/types/job";
+import {
+  DEFAULT_JOB_SORT,
+  JOB_SORTS,
+  JOB_SORT_LABELS,
+  type JobSort,
+} from "@/types/job";
 
 /** "Sort by" dropdown plus the grid/list view toggle from the reference. */
 export function ResultsToolbar({ view }: { view: "list" | "grid" }) {
@@ -15,7 +20,7 @@ export function ResultsToolbar({ view }: { view: "list" | "grid" }) {
   const searchParams = useSearchParams();
   const [pending, startTransition] = useTransition();
 
-  const sort = (searchParams.get("sort") ?? "relevant") as JobSort;
+  const sort = (searchParams.get("sort") ?? DEFAULT_JOB_SORT) as JobSort;
 
   const push = (updates: Parameters<typeof withParams>[1], resetPage = true) => {
     startTransition(() =>

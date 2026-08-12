@@ -1,7 +1,8 @@
-import { absoluteUrl, siteConfig } from "@/lib/site";
-import { toPlainText } from "@/lib/utils";
+import { absoluteUrl, editorialAuthor, siteConfig } from "@/lib/site";
+import { toISTISOString, toPlainText, truncate } from "@/lib/utils";
 import { ARTICLE_CATEGORY_LABELS, type ArticleSummary } from "@/types/blog";
-import type { Job, JobType } from "@/types/job";
+import type { Company } from "@/types/company";
+import type { JobType, JobWithCompany } from "@/types/job";
 
 function JsonLd({ data }: { data: Record<string, unknown> }) {
   return (
@@ -81,9 +82,13 @@ export function BreadcrumbJsonLd({
 /**
  * schema.org/BlogPosting for a career article.
  *
- * `author` and `publisher` are both the organisation rather than a person: the
- * articles are written by the editorial team, and naming an individual who does
- * not have a real, verifiable byline is worse for E-E-A-T than naming none.
+ * `author` is a Person, not the organisation. Career advice is squarely inside
+ * Google's "Your Money or Your Life" territory — guidance that affects
+ * someone's livelihood — where a named, verifiable writer is weighted heavily.
+ * The `url` on the Person is the point of "verifiable": it resolves to the
+ * editorial section of the About page, so the byline is an identity the site
+ * stands behind rather than a name in a field. `publisher` stays the
+ * organisation, which is what it is.
  */
 export function BlogPostingJsonLd({ article }: { article: ArticleSummary }) {
   const url = absoluteUrl(`/blog/${article.slug}`);
@@ -100,11 +105,17 @@ export function BlogPostingJsonLd({ article }: { article: ArticleSummary }) {
         description: article.description,
         articleSection: ARTICLE_CATEGORY_LABELS[article.category],
         keywords: article.tags.join(", "),
-        datePublished: article.published_at,
-        dateModified: article.revised_at ?? article.published_at,
+        datePublished: toISTISOString(article.published_at),
+        dateModified: toISTISOString(article.revised_at ?? article.published_at),
         inLanguage: "en-IN",
         image: absoluteUrl(`/blog/${article.slug}/opengraph-image`),
-        author: { "@type": "Organization", name: siteConfig.name, url: siteConfig.url },
+        author: {
+          "@type": "Person",
+          name: article.author_name,
+          url: absoluteUrl(editorialAuthor.path),
+          ...(article.author_bio ? { description: article.author_bio } : {}),
+          worksFor: { "@type": "Organization", name: siteConfig.name },
+        },
         publisher: {
           "@type": "Organization",
           name: siteConfig.name,
@@ -139,11 +150,100 @@ export function BlogJsonLd({ articles }: { articles: ArticleSummary[] }) {
           url: absoluteUrl(`/blog/${article.slug}`),
           headline: article.title,
           description: article.description,
-          datePublished: article.published_at,
-          dateModified: article.revised_at ?? article.published_at,
+          datePublished: toISTISOString(article.published_at),
+          dateModified: toISTISOString(
+            article.revised_at ?? article.published_at,
+          ),
         })),
       }}
     />
+  );
+}
+
+/**
+ * schema.org/Organization for a company profile, with its open roles attached
+ * as an ItemList.
+ *
+ * The `@id` is the profile URL and is the same identifier every JobPosting on
+ * the site points its `hiringOrganization` at, which is what ties the listings
+ * and the profile together as one entity rather than N unrelated employers
+ * that happen to share a name. `sameAs` carries only URLs the admin actually
+ * entered — asserting a profile that doesn't exist is worse than asserting
+ * none, the same reasoning as the omitted `sameAs` on OrganizationJsonLd.
+ */
+export function CompanyJsonLd({
+  company,
+  jobs,
+  jobCount,
+}: {
+  company: Company;
+  jobs: JobWithCompany[];
+  jobCount: number;
+}) {
+  const url = absoluteUrl(`/companies/${company.slug}`);
+  const sameAs = [company.website, company.linkedin_url].filter(
+    (link): link is string => Boolean(link),
+  );
+
+  return (
+    <>
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@type": "Organization",
+          "@id": url,
+          url,
+          name: company.name,
+          ...(company.legal_name ? { legalName: company.legal_name } : {}),
+          ...(company.description
+            ? { description: truncate(toPlainText(company.description), 500) }
+            : company.tagline
+              ? { description: company.tagline }
+              : {}),
+          ...(company.logo_url ? { logo: company.logo_url } : {}),
+          ...(company.cover_url ? { image: company.cover_url } : {}),
+          ...(sameAs.length ? { sameAs } : {}),
+          ...(company.industry ? { industry: company.industry } : {}),
+          ...(company.founded_year
+            ? { foundingDate: String(company.founded_year) }
+            : {}),
+          ...(company.headquarters
+            ? {
+                address: {
+                  "@type": "PostalAddress",
+                  addressLocality: company.headquarters,
+                  addressCountry: "IN",
+                },
+              }
+            : {}),
+          ...(company.size_range
+            ? {
+                numberOfEmployees: {
+                  "@type": "QuantitativeValue",
+                  name: company.size_range,
+                },
+              }
+            : {}),
+        }}
+      />
+
+      {jobs.length ? (
+        <JsonLd
+          data={{
+            "@context": "https://schema.org",
+            "@type": "ItemList",
+            name: `Open roles at ${company.name}`,
+            numberOfItems: jobCount,
+            itemListElement: jobs.map((job, index) => ({
+              "@type": "ListItem",
+              position: index + 1,
+              url: absoluteUrl(`/jobs/${job.slug}`),
+              name: job.title,
+            })),
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
@@ -180,7 +280,14 @@ function toPostalAddress(location: string) {
  * always emitted; optional ones only when we actually have the data, since
  * empty values trigger Search Console warnings.
  */
-export function JobPostingJsonLd({ job }: { job: Job }) {
+export function JobPostingJsonLd({
+  job,
+  company,
+}: {
+  job: JobWithCompany;
+  /** The full company row, when the page has already loaded it. */
+  company?: Company | null;
+}) {
   const descriptionHtml = [
     `<p>${toPlainText(job.description)}</p>`,
     job.responsibilities.length
@@ -198,6 +305,15 @@ export function JobPostingJsonLd({ job }: { job: Job }) {
     .join("");
 
   const isRemote = job.job_type === "remote";
+
+  // Company identity comes from the company row now, so every listing an
+  // employer owns asserts the same hiringOrganization instead of whatever was
+  // typed into that one listing. `sameAs` prefers the website and falls back to
+  // the profile page, which is a URL we control and can vouch for.
+  const companyName = company?.name ?? job.company?.name ?? job.company_name;
+  const companyWebsite = company?.website ?? job.company?.website ?? null;
+  const companySlug = company?.slug ?? job.company?.slug ?? null;
+  const companyLogo = company?.logo_url ?? job.company?.logo_url ?? null;
 
   const baseSalary =
     job.salary_min !== null || job.salary_max !== null
@@ -222,14 +338,21 @@ export function JobPostingJsonLd({ job }: { job: Job }) {
         url: absoluteUrl(`/jobs/${job.slug}`),
         title: job.title,
         description: descriptionHtml,
-        datePosted: job.posted_at,
-        ...(job.valid_through ? { validThrough: job.valid_through } : {}),
+        datePosted: toISTISOString(job.posted_at),
+        ...(job.valid_through
+          ? { validThrough: toISTISOString(job.valid_through) }
+          : {}),
         employmentType: EMPLOYMENT_TYPES[job.job_type],
         hiringOrganization: {
           "@type": "Organization",
-          name: job.company_name,
-          ...(job.company_website ? { sameAs: job.company_website } : {}),
-          ...(job.company_logo_url ? { logo: job.company_logo_url } : {}),
+          name: companyName,
+          ...(companySlug
+            ? { "@id": absoluteUrl(`/companies/${companySlug}`) }
+            : {}),
+          ...(companyWebsite
+            ? { sameAs: companyWebsite, url: companyWebsite }
+            : {}),
+          ...(companyLogo ? { logo: companyLogo } : {}),
         },
         jobLocation: {
           "@type": "Place",

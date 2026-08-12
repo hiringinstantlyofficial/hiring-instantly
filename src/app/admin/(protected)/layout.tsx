@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   Briefcase,
+  Building2,
   Inbox,
   LayoutDashboard,
   LogOut,
@@ -17,6 +18,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/admin/companies", label: "Companies", icon: Building2 },
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/messages", label: "Messages", icon: Inbox },
 ] as const;

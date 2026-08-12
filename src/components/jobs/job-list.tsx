@@ -3,10 +3,10 @@ import { SearchX } from "lucide-react";
 
 import { JobCard } from "@/components/jobs/job-card";
 import { cn } from "@/lib/utils";
-import type { Job } from "@/types/job";
+import type { JobWithCompany } from "@/types/job";
 
 interface JobListProps {
-  jobs: Job[];
+  jobs: JobWithCompany[];
   view?: "list" | "grid";
 }
 

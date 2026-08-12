@@ -9,8 +9,9 @@ import { TriangleAlert } from "lucide-react";
 import { revalidateArticlePaths } from "@/app/actions/admin";
 import { Field, Fieldset, inputClass } from "@/components/admin/form-fields";
 import { Button } from "@/components/ui/button";
+import { editorialAuthor } from "@/lib/site";
 import { createClient } from "@/lib/supabase/client";
-import { cn, slugify } from "@/lib/utils";
+import { cn, formatDate, isFutureDate, istDateInputToISO, slugify, toISTDateInput } from "@/lib/utils";
 import {
   articleFormSchema,
   type ArticleFormOutput,
@@ -25,12 +26,6 @@ import {
   type Article,
 } from "@/types/blog";
 
-/** ISO timestamp -> the `yyyy-MM-dd` a date input expects. */
-function toDateInput(value: string | null): string {
-  if (!value) return "";
-  return new Date(value).toISOString().slice(0, 10);
-}
-
 function defaultsFrom(article?: Article): ArticleFormValues {
   return {
     title: article?.title ?? "",
@@ -39,12 +34,14 @@ function defaultsFrom(article?: Article): ArticleFormValues {
     excerpt: article?.excerpt ?? "",
     category: article?.category ?? "job-search",
     body_markdown: article?.body_markdown ?? "",
+    author_name: article?.author_name ?? editorialAuthor.name,
+    author_bio: article?.author_bio ?? "",
     reading_minutes: article?.reading_minutes ?? "",
     tags: article?.tags.join(", ") ?? "",
     related: article?.related.join(", ") ?? "",
     status: article?.status ?? "draft",
-    published_at: toDateInput(article?.published_at ?? null),
-    revised_at: toDateInput(article?.revised_at ?? null),
+    published_at: toISTDateInput(article?.published_at),
+    revised_at: toISTDateInput(article?.revised_at),
   };
 }
 
@@ -83,10 +80,13 @@ export function ArticleForm({ article }: { article?: Article }) {
   // A published post dated ahead of today is queued, not live. Worth saying
   // plainly on the form — it is the one behaviour here that looks like a bug if
   // you do not know about it.
+  // Compared as IST midnight, the same instant the form will actually store —
+  // reading the browser's local clock here disagreed with the server for anyone
+  // outside IST.
   const isScheduled =
     status === "published" &&
     Boolean(publishedAt) &&
-    new Date(`${publishedAt}T00:00:00`).getTime() > Date.now();
+    isFutureDate(istDateInputToISO(publishedAt));
 
   const onSubmit = handleSubmit(async (values) => {
     setFormError(null);
@@ -99,6 +99,8 @@ export function ArticleForm({ article }: { article?: Article }) {
       excerpt: values.excerpt,
       category: values.category,
       body_markdown: values.body_markdown,
+      author_name: values.author_name,
+      author_bio: values.author_bio,
       // Left blank, the estimate stands in — one less number to keep honest by
       // hand every time a paragraph is added.
       reading_minutes:
@@ -225,6 +227,30 @@ export function ArticleForm({ article }: { article?: Article }) {
         </div>
       </Fieldset>
 
+      <Fieldset legend="Byline">
+        <Field
+          label="Author"
+          required
+          error={errorFor("author_name")}
+          hint="Shown under the headline and emitted as a Person in the article's structured data."
+        >
+          <input {...register("author_name")} className={inputClass} />
+        </Field>
+
+        <Field
+          label="About the author"
+          error={errorFor("author_bio")}
+          full
+          hint="Two or three sentences of relevant credentials. Shown at the foot of the article; the block is hidden if this is blank."
+        >
+          <textarea
+            {...register("author_bio")}
+            rows={3}
+            className={cn(inputClass, "resize-y")}
+          />
+        </Field>
+      </Fieldset>
+
       <Fieldset legend="Publishing">
         <Field label="Status" required error={errorFor("status")}>
           <select {...register("status")} className={inputClass}>
@@ -295,12 +321,8 @@ export function ArticleForm({ article }: { article?: Article }) {
           <p className="sm:col-span-2 border border-line bg-slate-50 p-3 text-sm text-navy-700">
             Scheduled. This article will appear on the blog, in the sitemap and
             to search engines on{" "}
-            {new Date(`${publishedAt}T00:00:00`).toLocaleDateString("en-IN", {
-              day: "numeric",
-              month: "long",
-              year: "numeric",
-            })}
-            , without anyone touching it.
+            {formatDate(istDateInputToISO(publishedAt) ?? "")} (IST), without
+            anyone touching it.
           </p>
         ) : null}
       </Fieldset>

@@ -1,9 +1,12 @@
 import {
+  DEFAULT_JOB_SORT,
   JOB_CATEGORIES,
   JOB_LEVELS,
+  JOB_SORTS,
   JOB_TYPES,
   SALARY_BANDS,
   type JobFilters,
+  type JobSort,
   type SalaryBandId,
 } from "@/types/job";
 
@@ -41,9 +44,17 @@ export function parseJobFilters(
   const pageRaw = Number.parseInt(readString("page") ?? "1", 10);
   const sortRaw = readString("sort");
 
+  // A company slug, not a name: /jobs?company=acme-labs. Shape-checked here
+  // rather than trusted, since it goes into a database filter downstream.
+  const company = readString("company");
+
   return {
     q: readString("q"),
     location: readString("location"),
+    company:
+      company && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(company)
+        ? company
+        : undefined,
     jobTypes: readList("jobTypes", JOB_TYPES),
     categories: readList("categories", JOB_CATEGORIES),
     jobLevels: readList("jobLevels", JOB_LEVELS),
@@ -56,9 +67,8 @@ export function parseJobFilters(
       SALARY_BANDS.map((band) => band.id) as readonly SalaryBandId[],
     ),
     page: Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1,
-    sort:
-      sortRaw === "newest" || sortRaw === "salary-high" || sortRaw === "relevant"
-        ? sortRaw
-        : "relevant",
+    sort: (JOB_SORTS as readonly string[]).includes(sortRaw ?? "")
+      ? (sortRaw as JobSort)
+      : DEFAULT_JOB_SORT,
   };
 }

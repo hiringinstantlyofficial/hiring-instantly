@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 
+import { formatDate } from "@/lib/utils";
 import {
   articleFormSchema,
+  companyFormSchema,
   contactSchema,
   jobFormSchema,
   loginSchema,
@@ -16,6 +18,8 @@ function validArticle(overrides: Record<string, unknown> = {}) {
     excerpt: "x".repeat(60),
     category: "salary",
     body_markdown: "word ".repeat(400),
+    author_name: "Rakshith Gowda",
+    author_bio: "",
     reading_minutes: "",
     tags: "Salary, CTC",
     related: "",
@@ -75,6 +79,21 @@ describe("articleFormSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("rejects an article with no byline", () => {
+    const result = articleFormSchema.safeParse(validArticle({ author_name: "" }));
+
+    expect(result.success).toBe(false);
+  });
+
+  it("nulls a blank author bio so the block is dropped rather than empty", () => {
+    const result = articleFormSchema.safeParse(validArticle({ author_bio: "  " }));
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.author_bio).toBeNull();
+    }
+  });
+
   it("leaves reading_minutes null when blank, for the estimate to fill", () => {
     const result = articleFormSchema.safeParse(validArticle());
 
@@ -90,10 +109,7 @@ function validJob(overrides: Record<string, unknown> = {}) {
   return {
     title: "Backend Engineer",
     slug: "backend-engineer",
-    company_name: "Acme Corp",
-    company_logo_url: "",
-    company_website: "",
-    company_description: "",
+    company_id: "3f1c2b7e-9a44-4c1d-8f2e-6b0d5a1c7e93",
     location: "Bengaluru, Karnataka",
     job_type: "full-time",
     categories: "engineering",
@@ -122,11 +138,14 @@ function validJob(overrides: Record<string, unknown> = {}) {
 }
 
 describe("jobFormSchema — date fields", () => {
-  it("normalises a date input to an ISO timestamp", () => {
+  it("normalises a date input to the ISO timestamp of that day's IST midnight", () => {
     const result = jobFormSchema.safeParse(validJob({ posted_at: "2026-07-12" }));
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.posted_at).toBe("2026-07-12T00:00:00.000Z");
+      // 00:00 IST on the 12th, not 00:00 UTC — otherwise the admin picks a day
+      // and the site shows the one before it.
+      expect(result.data.posted_at).toBe("2026-07-11T18:30:00.000Z");
+      expect(formatDate(result.data.posted_at!)).toBe("12-07-2026");
     }
   });
 
@@ -265,5 +284,101 @@ describe("loginSchema", () => {
     expect(
       loginSchema.safeParse({ email: "a@b.com", password: "short" }).success,
     ).toBe(false);
+  });
+});
+
+/** A minimal company payload that passes every required field. */
+function validCompany(overrides: Record<string, unknown> = {}) {
+  return {
+    name: "Acme Labs",
+    slug: "acme-labs",
+    legal_name: "",
+    logo_url: "",
+    cover_url: "",
+    website: "",
+    linkedin_url: "",
+    tagline: "",
+    description: "",
+    industry: "",
+    headquarters: "",
+    founded_year: "",
+    size_range: "",
+    is_verified: false,
+    status: "active",
+    ...overrides,
+  };
+}
+
+describe("companyFormSchema", () => {
+  it("accepts a company with nothing but a name and status", () => {
+    const result = companyFormSchema.safeParse(validCompany({ slug: "" }));
+    expect(result.success).toBe(true);
+  });
+
+  it("normalises empty optional text to null rather than an empty string", () => {
+    const result = companyFormSchema.safeParse(validCompany());
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.description).toBeNull();
+      expect(result.data.tagline).toBeNull();
+      expect(result.data.website).toBeNull();
+      expect(result.data.size_range).toBeNull();
+      expect(result.data.founded_year).toBeNull();
+    }
+  });
+
+  it("requires a full URL on the link fields", () => {
+    expect(
+      companyFormSchema.safeParse(validCompany({ website: "acme.test" })).success,
+    ).toBe(false);
+    expect(
+      companyFormSchema.safeParse(validCompany({ website: "https://acme.test" }))
+        .success,
+    ).toBe(true);
+  });
+
+  it("rejects a slug that is not URL-safe", () => {
+    expect(
+      companyFormSchema.safeParse(validCompany({ slug: "Acme Labs" })).success,
+    ).toBe(false);
+  });
+
+  it("bounds the founding year to a plausible four-digit year", () => {
+    expect(
+      companyFormSchema.safeParse(validCompany({ founded_year: "1799" })).success,
+    ).toBe(false);
+    expect(
+      companyFormSchema.safeParse(validCompany({ founded_year: "2016" })).success,
+    ).toBe(true);
+  });
+
+  it("rejects a size range outside the enum", () => {
+    expect(
+      companyFormSchema.safeParse(validCompany({ size_range: "loads" })).success,
+    ).toBe(false);
+  });
+});
+
+describe("jobFormSchema — company reference", () => {
+  // The listing points at a company row; it no longer restates the company's
+  // details, which is what kept the descriptions in sync.
+  it("requires a company id", () => {
+    expect(jobFormSchema.safeParse(validJob({ company_id: "" })).success).toBe(
+      false,
+    );
+    expect(
+      jobFormSchema.safeParse(validJob({ company_id: "not-a-uuid" })).success,
+    ).toBe(false);
+  });
+
+  it("does not carry the old per-listing company fields through", () => {
+    const result = jobFormSchema.safeParse(
+      validJob({ company_description: "Should be ignored" }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect("company_description" in result.data).toBe(false);
+      expect("company_logo_url" in result.data).toBe(false);
+    }
   });
 });

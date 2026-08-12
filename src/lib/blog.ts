@@ -17,7 +17,7 @@ export const ARTICLES_CACHE_TAG = "articles";
 
 /** Every column except the body — enough for cards, lists and metadata. */
 const SUMMARY_COLUMNS =
-  "id, slug, title, description, excerpt, category, reading_minutes, tags, related, status, published_at, revised_at, created_at, updated_at";
+  "id, slug, title, description, excerpt, category, author_name, author_bio, reading_minutes, tags, related, status, published_at, revised_at, created_at, updated_at";
 
 function reportError(context: string, error: { code?: string } | null): void {
   if (error?.code === "PGRST205" || error?.code === "42P01") {

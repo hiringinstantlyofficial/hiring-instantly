@@ -6,6 +6,7 @@ import {
   JOB_TYPES,
 } from "@/types/job";
 
+import { toISTDateInput } from "./utils";
 import type { JobFormValues } from "./validations";
 
 /**
@@ -56,8 +57,30 @@ const KNOWN_KEYS = [
   "valid_through",
 ] as const;
 
+/**
+ * The company fields a scrape produces, kept apart from the job values.
+ *
+ * A company is its own row now, written once and shared by every listing it
+ * owns, so an import must never write straight into it — that is exactly how
+ * the same employer ended up with a different description on every job. The
+ * form matches this hint against the existing companies by name and either
+ * selects the match (leaving its profile untouched) or opens the new-company
+ * dialog prefilled.
+ */
+export interface CompanyImportHint {
+  name?: string;
+  website?: string;
+  logoUrl?: string;
+  description?: string;
+}
+
 export type JobImportResult =
-  | { ok: true; values: Partial<JobFormValues>; warnings: string[] }
+  | {
+      ok: true;
+      values: Partial<JobFormValues>;
+      company: CompanyImportHint | null;
+      warnings: string[];
+    }
   | { ok: false; error: string };
 
 /**
@@ -126,13 +149,13 @@ function asNumber(value: unknown): number | null | undefined {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** Any parseable date -> the `yyyy-MM-dd` a date input expects. */
+/** Any parseable date -> the `yyyy-MM-dd` a date input expects, read in IST. */
 function asDateInput(value: unknown): string | null | undefined {
   const text = asText(value);
   if (!text) return undefined;
   const date = new Date(text);
   if (Number.isNaN(date.getTime())) return null;
-  return date.toISOString().slice(0, 10);
+  return toISTDateInput(date);
 }
 
 function asEnum<T extends string>(
@@ -203,11 +226,15 @@ export function parseJobImport(input: string): JobImportResult {
 
   set("title", asText(record.title));
   set("slug", asText(record.slug)?.toLowerCase());
-  set("company_name", asText(record.company_name));
-  set("company_logo_url", asText(record.company_logo_url));
-  set("company_website", asText(record.company_website));
-  set("company_description", asText(record.company_description));
   set("location", asText(record.location));
+
+  const company: CompanyImportHint = {
+    name: asText(record.company_name),
+    website: asText(record.company_website),
+    logoUrl: asText(record.company_logo_url),
+    description: asText(record.company_description),
+  };
+  const hasCompany = Object.values(company).some(Boolean);
 
   set("job_type", take("Employment type", asEnum(JOB_TYPES, record.job_type)));
 
@@ -265,7 +292,7 @@ export function parseJobImport(input: string): JobImportResult {
     set("is_featured", record.is_featured);
   }
 
-  if (Object.keys(values).length === 0) {
+  if (Object.keys(values).length === 0 && !hasCompany) {
     return {
       ok: false,
       error: "No recognisable job fields in that JSON — nothing was filled in.",
@@ -286,5 +313,5 @@ export function parseJobImport(input: string): JobImportResult {
     );
   }
 
-  return { ok: true, values, warnings };
+  return { ok: true, values, company: hasCompany ? company : null, warnings };
 }

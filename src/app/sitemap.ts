@@ -1,6 +1,7 @@
 import type { MetadataRoute } from "next";
 
 import { getArticleSummaries } from "@/lib/blog";
+import { getIndexableCompanySlugs } from "@/lib/companies";
 import { getAllActiveJobSlugs } from "@/lib/jobs";
 import { absoluteUrl } from "@/lib/site";
 
@@ -52,5 +53,22 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.8,
   }));
 
-  return [...staticRoutes, ...articleRoutes, ...jobRoutes];
+  // Only companies with a live opening — getIndexableCompanySlugs applies
+  // that, matching the `noindex` the profile page sets on an empty one. A
+  // profile with no roles is thin content and does not belong in here.
+  const companies = await getIndexableCompanySlugs();
+
+  const companyRoutes: MetadataRoute.Sitemap = companies.map((company) => ({
+    url: absoluteUrl(`/companies/${company.slug}`),
+    lastModified: new Date(company.updated_at),
+    changeFrequency: "weekly",
+    priority: 0.6,
+  }));
+
+  return [
+    ...staticRoutes,
+    ...articleRoutes,
+    ...jobRoutes,
+    ...companyRoutes,
+  ];
 }

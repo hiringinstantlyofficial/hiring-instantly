@@ -1,23 +1,29 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CalendarClock, ChevronRight, Globe } from "lucide-react";
+import { Building2, CalendarClock, ChevronRight, Globe } from "lucide-react";
 
 import { ApplyButton } from "@/components/jobs/apply-button";
 // import { CapacityMeter } from "@/components/jobs/capacity-meter";
 import { JobCard } from "@/components/jobs/job-card";
 import { BreadcrumbJsonLd, JobPostingJsonLd } from "@/components/seo/json-ld";
 import { CategoryBadge } from "@/components/ui/badge";
+import { CompanyCover } from "@/components/ui/company-cover";
 import { CompanyLogo } from "@/components/ui/company-logo";
-import { RelativeTime } from "@/components/ui/relative-time";
+import { getCompanyBySlug } from "@/lib/companies";
 import { getAllActiveJobSlugs, getJobBySlug, getSimilarJobs } from "@/lib/jobs";
 import { absoluteUrl, siteConfig } from "@/lib/site";
-import { formatDate, formatSalaryRange, truncate } from "@/lib/utils";
+import {
+  formatDate,
+  formatSalaryRange,
+  toISTISOString,
+  truncate,
+} from "@/lib/utils";
 import {
   EXPERIENCE_LEVEL_LABELS,
   JOB_LEVEL_LABELS,
   JOB_TYPE_LABELS,
-  type Job,
+  type JobWithCompany,
 } from "@/types/job";
 
 /** Job pages are ISR: prerendered at build, refreshed without a redeploy. */
@@ -72,7 +78,7 @@ export async function generateMetadata({
       description,
       url: absoluteUrl(canonical),
       siteName: siteConfig.name,
-      publishedTime: job.posted_at,
+      publishedTime: toISTISOString(job.posted_at),
       images: [
         {
           url: `/jobs/${job.slug}/opengraph-image`,
@@ -84,8 +90,10 @@ export async function generateMetadata({
     },
     twitter: { card: "summary_large_image", title, description },
     other: {
-      "job:posted_at": job.posted_at,
-      ...(job.valid_through ? { "job:valid_through": job.valid_through } : {}),
+      "job:posted_at": toISTISOString(job.posted_at),
+      ...(job.valid_through
+        ? { "job:valid_through": toISTISOString(job.valid_through) }
+        : {}),
     },
   };
 }
@@ -100,7 +108,19 @@ export default async function JobDetailPage({
 
   if (!job) notFound();
 
-  const similar = await getSimilarJobs(job);
+  // The listing embed carries only what a card needs (name, logo, link). The
+  // detail page also shows the company's description, which is now written
+  // once on the company row rather than per listing, so it fetches the full
+  // row — a cached read, and only on this route.
+  const [similar, company] = await Promise.all([
+    getSimilarJobs(job),
+    job.company ? getCompanyBySlug(job.company.slug) : Promise.resolve(null),
+  ]);
+
+  const companyName = job.company?.name ?? job.company_name;
+  const companyHref = job.company ? `/companies/${job.company.slug}` : null;
+  const companyWebsite = company?.website ?? job.company?.website ?? null;
+
   const salary = formatSalaryRange(
     job.salary_min,
     job.salary_max,
@@ -116,10 +136,22 @@ export default async function JobDetailPage({
   return (
     <>
       {/* --- header ---------------------------------------------------------- */}
-      <div className="hero-pattern border-b border-line-soft">
+      {/* The employer's banner backs this band, the same image their profile
+          uses, so a role and the company behind it look like one place. With
+          no banner set CompanyCover falls back to the site's hero-pattern —
+          which is exactly what this header was before. */}
+      <CompanyCover
+        coverUrl={company?.cover_url}
+        name={companyName}
+        className="border-b border-line-soft"
+      >
         <div className="container-page py-8 lg:py-10">
           <nav aria-label="Breadcrumb">
-            <ol className="flex flex-wrap items-center gap-1.5 text-sm text-slate-400">
+            <ol
+              className={`flex flex-wrap items-center gap-1.5 text-sm ${
+                company?.cover_url ? "text-white/70" : "text-slate-400"
+              }`}
+            >
               {breadcrumbs.map((crumb, index) => {
                 const isLast = index === breadcrumbs.length - 1;
                 return (
@@ -127,7 +159,11 @@ export default async function JobDetailPage({
                     {isLast ? (
                       <span
                         aria-current="page"
-                        className="font-semibold text-navy-700"
+                        className={
+                          company?.cover_url
+                            ? "font-semibold text-white"
+                            : "font-semibold text-navy-700"
+                        }
                       >
                         {truncate(crumb.name, 48)}
                       </span>
@@ -145,10 +181,12 @@ export default async function JobDetailPage({
             </ol>
           </nav>
 
-          <div className="mt-6 flex flex-col gap-6 border border-line bg-white p-6 sm:flex-row sm:items-center lg:p-8">
+          {/* A little more clearance than before, so the banner behind reads
+              as a banner rather than a stripe peeking past the card. */}
+          <div className="mt-6 flex flex-col gap-6 border border-line bg-white p-6 sm:flex-row sm:items-center lg:mt-8 lg:p-8">
             <CompanyLogo
-              name={job.company_name}
-              logoUrl={job.company_logo_url}
+              name={companyName}
+              logoUrl={company?.logo_url ?? job.company?.logo_url}
               size={80}
               priority
             />
@@ -156,25 +194,29 @@ export default async function JobDetailPage({
             <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-bold sm:text-3xl">{job.title}</h1>
               <p className="mt-2 text-base text-slate-400">
-                {job.company_website ? (
-                  <a
-                    href={job.company_website}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
+                {/* Points at the company profile rather than straight out to
+                    the employer's site: the profile is ours, indexable, and
+                    carries every other role they have open. */}
+                {companyHref ? (
+                  <Link
+                    href={companyHref}
                     className="font-semibold text-navy-700 hover:text-primary"
                   >
-                    {job.company_name}
-                  </a>
+                    {companyName}
+                  </Link>
                 ) : (
                   <span className="font-semibold text-navy-700">
-                    {job.company_name}
+                    {companyName}
                   </span>
                 )}{" "}
                 <span aria-hidden>•</span> {job.location}{" "}
                 <span aria-hidden>•</span> {JOB_TYPE_LABELS[job.job_type]}
               </p>
               <p className="mt-2 text-sm text-slate-400">
-                Posted <RelativeTime date={job.posted_at} />
+                Posted{" "}
+                <time dateTime={toISTISOString(job.posted_at)}>
+                  {formatDate(job.posted_at)}
+                </time>
                 {job.valid_through
                   ? ` · Apply before ${formatDate(job.valid_through)}`
                   : ""}
@@ -189,7 +231,7 @@ export default async function JobDetailPage({
             </div> */}
           </div>
         </div>
-      </div>
+      </CompanyCover>
 
       {/* --- body ------------------------------------------------------------ */}
       <div className="container-page py-12 lg:py-16">
@@ -206,30 +248,44 @@ export default async function JobDetailPage({
             <BulletSection title="Who You Are" items={job.requirements} />
             <BulletSection title="Nice-To-Haves" items={job.nice_to_haves} />
 
-            {job.company_description ? (
+            {/* One description per company, read from the company row — the
+                same copy every listing they own shows. Truncated here, with
+                the profile carrying the full text. */}
+            {company?.description ? (
               <section className="mt-10">
-                <h2 className="text-h3">About {job.company_name}</h2>
+                <h2 className="text-h3">About {companyName}</h2>
                 <p className="prose-legal mt-4 whitespace-pre-line">
-                  {job.company_description}
+                  {truncate(company.description, 600)}
                 </p>
-                {job.company_website ? (
-                  <a
-                    href={job.company_website}
-                    target="_blank"
-                    rel="noopener noreferrer nofollow"
-                    className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
-                  >
-                    <Globe className="size-4" aria-hidden />
-                    Visit website
-                  </a>
-                ) : null}
+                <div className="mt-4 flex flex-wrap items-center gap-5">
+                  {companyHref ? (
+                    <Link
+                      href={companyHref}
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+                    >
+                      <Building2 className="size-4" aria-hidden />
+                      View company profile
+                    </Link>
+                  ) : null}
+                  {companyWebsite ? (
+                    <a
+                      href={companyWebsite}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      className="inline-flex items-center gap-2 text-sm font-semibold text-primary hover:underline"
+                    >
+                      <Globe className="size-4" aria-hidden />
+                      Visit website
+                    </a>
+                  ) : null}
+                </div>
               </section>
             ) : null}
 
             <div className="mt-10 border border-line bg-surface-muted p-6">
               <h2 className="text-h4">Ready to apply?</h2>
               <p className="mt-2 text-sm text-slate-600">
-                Applications are handled directly by {job.company_name}.
+                Applications are handled directly by {companyName}.
               </p>
               <div className="mt-4 sm:max-w-xs">
                 <ApplyButton job={job} />
@@ -338,7 +394,7 @@ export default async function JobDetailPage({
               </Link>
             </div>
             <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              {similar.map((item: Job) => (
+              {similar.map((item: JobWithCompany) => (
                 <JobCard key={item.id} job={item} view="grid" />
               ))}
             </div>
@@ -346,7 +402,7 @@ export default async function JobDetailPage({
         ) : null}
       </div>
 
-      <JobPostingJsonLd job={job} />
+      <JobPostingJsonLd job={job} company={company} />
       <BreadcrumbJsonLd items={breadcrumbs} />
     </>
   );

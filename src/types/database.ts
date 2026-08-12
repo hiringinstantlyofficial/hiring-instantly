@@ -4,6 +4,11 @@ import type {
   ArticleStatus,
 } from "@/types/blog";
 import type {
+  Company,
+  CompanySizeRange,
+  CompanyStatus,
+} from "@/types/company";
+import type {
   ExperienceLevel,
   Job,
   JobCategory,
@@ -32,10 +37,10 @@ type JobInsert = {
   id?: string;
   slug: string;
   title: string;
-  company_name: string;
-  company_logo_url?: string | null;
-  company_website?: string | null;
-  company_description?: string | null;
+  company_id: string;
+  // Not accepted from the app: a BEFORE trigger overwrites it from
+  // companies.name on every insert and every change of company_id.
+  company_name?: string;
   location: string;
   job_type: JobType;
   categories?: JobCategory[];
@@ -63,6 +68,27 @@ type JobInsert = {
   updated_at?: string;
 };
 
+type CompanyInsert = {
+  id?: string;
+  slug: string;
+  name: string;
+  legal_name?: string | null;
+  logo_url?: string | null;
+  cover_url?: string | null;
+  website?: string | null;
+  description?: string | null;
+  tagline?: string | null;
+  industry?: string | null;
+  headquarters?: string | null;
+  founded_year?: number | null;
+  size_range?: CompanySizeRange | null;
+  linkedin_url?: string | null;
+  is_verified?: boolean;
+  status?: CompanyStatus;
+  created_at?: string;
+  updated_at?: string;
+};
+
 type ArticleInsert = {
   id?: string;
   slug: string;
@@ -71,6 +97,8 @@ type ArticleInsert = {
   excerpt: string;
   category: ArticleCategory;
   body_markdown: string;
+  author_name?: string;
+  author_bio?: string | null;
   reading_minutes?: number;
   tags?: string[];
   related?: string[];
@@ -130,6 +158,24 @@ export type Database = {
         Row: JobRow;
         Insert: JobInsert;
         Update: Partial<JobInsert>;
+        // Declared, unlike every other table here, because the listing reads
+        // embed the company (`select("*, company:companies(...)")`). Without
+        // this entry supabase-js cannot resolve the embedded shape and types
+        // the whole row as `never`.
+        Relationships: [
+          {
+            foreignKeyName: "jobs_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
+      companies: {
+        Row: Company;
+        Insert: CompanyInsert;
+        Update: Partial<CompanyInsert>;
         Relationships: [];
       };
       articles: {

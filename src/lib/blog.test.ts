@@ -22,6 +22,8 @@ function article(
     description: "",
     excerpt: "",
     category: "job-search",
+    author_name: "Rakshith Gowda",
+    author_bio: null,
     reading_minutes: 5,
     tags: [],
     related: [],

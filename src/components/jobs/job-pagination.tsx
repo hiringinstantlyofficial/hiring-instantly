@@ -13,7 +13,11 @@ interface JobPaginationProps {
 
 /**
  * Numbered pagination, rendered as real anchors so crawlers can walk the whole
- * listing (the reference design shows numbered pages, not infinite scroll).
+ * listing.
+ *
+ * This stays the control on desktop and the fallback everywhere: on small
+ * screens <MobileInfiniteJobs> hides it while its scroll is driving, and shows
+ * it again at the end of the list, on a failure, or when JavaScript never runs.
  */
 export function JobPagination({
   page,

@@ -1,6 +1,8 @@
 import { z } from "zod";
 
+import { istDateInputToISO } from "@/lib/utils";
 import { ARTICLE_CATEGORIES, ARTICLE_STATUSES } from "@/types/blog";
+import { COMPANY_SIZE_RANGES, COMPANY_STATUSES } from "@/types/company";
 import {
   EXPERIENCE_LEVELS,
   JOB_CATEGORIES,
@@ -82,6 +84,21 @@ const optionalUrl = z
     "Enter a full URL starting with http:// or https://",
   );
 
+/**
+ * A free-text field that is allowed to be empty, normalised so the column gets
+ * `null` rather than an empty string. An empty string reads as "the admin
+ * wrote nothing here", which is exactly what `null` means, and only one of the
+ * two needs handling at render time.
+ */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max, `Keep this under ${max} characters`)
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value ? value : null));
+
 const optionalEmail = z
   .string()
   .trim()
@@ -106,6 +123,11 @@ const optionalNumber = z
 /**
  * A `yyyy-MM-dd` date input, normalised to an ISO timestamp.
  *
+ * The day is read as an *IST* calendar day, so 12-08-2026 is stored as that
+ * day's IST midnight (`2026-08-11T18:30:00Z`) rather than UTC midnight. Without
+ * this, picking a date and reading it back landed a day early for anyone on the
+ * IST side of the clock, and scheduled posts went live at 05:30 IST.
+ *
  * The validity check has to happen *before* the transform: `new Date("garbage")`
  * is an Invalid Date and `.toISOString()` on it throws a RangeError, which would
  * blow up the whole parse instead of producing a field error.
@@ -118,7 +140,7 @@ const optionalDate = z
     (value) => !value || !Number.isNaN(new Date(value).getTime()),
     "Enter a valid date",
   )
-  .transform((value) => (value ? new Date(value).toISOString() : null));
+  .transform((value) => (value ? istDateInputToISO(value) : null));
 
 /**
  * The admin job form. Coerces the textarea/CSV inputs into the array columns
@@ -139,16 +161,9 @@ export const jobFormSchema = z
         "Use lowercase letters, numbers and hyphens only",
       ),
 
-    company_name: z.string().trim().min(2, "Company name is required").max(160),
-    company_logo_url: optionalUrl,
-    company_website: optionalUrl,
-    company_description: z
-      .string()
-      .trim()
-      .max(4000)
-      .optional()
-      .or(z.literal(""))
-      .transform((value) => (value ? value : null)),
+    // The listing points at a company row; the logo, website and description
+    // it used to carry per-listing now live there, written once.
+    company_id: z.string().uuid("Pick a company for this listing"),
 
     location: z.string().trim().min(2, "Location is required").max(160),
     job_type: z.enum(JOB_TYPES),
@@ -216,6 +231,57 @@ export type JobFormValues = z.input<typeof jobFormSchema>;
 export type JobFormOutput = z.output<typeof jobFormSchema>;
 
 /**
+ * The admin company form — the single place a company's identity is written.
+ *
+ * `description` is the one field worth calling out: it replaces the per-listing
+ * `jobs.company_description`, so it is written once and read by every job page
+ * that company owns. That is the whole point of the table, and it is why this
+ * schema is generous with the length limit.
+ */
+export const companyFormSchema = z.object({
+  name: z.string().trim().min(2, "Company name is required").max(160),
+  slug: z
+    .string()
+    .trim()
+    .max(120)
+    .optional()
+    .or(z.literal(""))
+    .refine(
+      (value) => !value || /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(value),
+      "Use lowercase letters, numbers and hyphens only",
+    ),
+  legal_name: optionalText(200),
+
+  logo_url: optionalUrl,
+  cover_url: optionalUrl,
+
+  website: optionalUrl,
+  linkedin_url: optionalUrl,
+
+  // Bounded at 200 rather than left open: this is the card blurb and the meta
+  // description, and Google truncates it well before that.
+  tagline: optionalText(200),
+  description: optionalText(8000),
+
+  industry: optionalText(120),
+  headquarters: optionalText(160),
+  founded_year: optionalNumber.refine(
+    (value) => value === null || (value >= 1800 && value <= 2100),
+    "Enter a four-digit year",
+  ),
+  size_range: z
+    .union([z.enum(COMPANY_SIZE_RANGES), z.literal("")])
+    .optional()
+    .transform((value) => (value ? value : null)),
+
+  is_verified: z.coerce.boolean().default(false),
+  status: z.enum(COMPANY_STATUSES),
+});
+
+export type CompanyFormValues = z.input<typeof companyFormSchema>;
+export type CompanyFormOutput = z.output<typeof companyFormSchema>;
+
+/**
  * The admin article form.
  *
  * The one rule worth spelling out is `published_at`: a date in the future is
@@ -257,6 +323,22 @@ export const articleFormSchema = z.object({
       1000,
       "An article this short will not rank and will not help anyone — write at least ~1000 characters",
     ),
+
+  // Required, unlike most of this form. An article about salaries or notice
+  // periods with no named writer is exactly the page Google discounts, so the
+  // byline is not something to leave for later.
+  author_name: z
+    .string()
+    .trim()
+    .min(2, "Name the person who wrote this")
+    .max(120, "That name is too long"),
+  author_bio: z
+    .string()
+    .trim()
+    .max(600, "Keep the author bio under 600 characters")
+    .optional()
+    .or(z.literal(""))
+    .transform((value) => (value ? value : null)),
 
   reading_minutes: optionalNumber,
   tags: commaToArray,

@@ -9,8 +9,8 @@ import { BlogPostingJsonLd, BreadcrumbJsonLd } from "@/components/seo/json-ld";
 import { ArticleCategoryBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { getArticleBySlug, getArticleSlugs, getRelatedArticles } from "@/lib/blog";
-import { absoluteUrl, siteConfig } from "@/lib/site";
-import { formatDate, truncate } from "@/lib/utils";
+import { absoluteUrl, editorialAuthor, siteConfig } from "@/lib/site";
+import { formatDate, toISTISOString, truncate } from "@/lib/utils";
 
 /**
  * ISR, like the job pages: prerendered at build, refreshed without a redeploy.
@@ -54,8 +54,8 @@ export async function generateMetadata({
       description: article.description,
       url: absoluteUrl(canonical),
       siteName: siteConfig.name,
-      publishedTime: article.published_at,
-      modifiedTime: article.revised_at ?? article.published_at,
+      publishedTime: toISTISOString(article.published_at),
+      modifiedTime: toISTISOString(article.revised_at ?? article.published_at),
       images: [
         {
           url: `${canonical}/opengraph-image`,
@@ -133,10 +133,17 @@ export default async function ArticlePage({
 
             <div className="mt-6 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-400">
               <span>
-                By the {siteConfig.name} team
+                By{" "}
+                <Link
+                  href={editorialAuthor.path}
+                  rel="author"
+                  className="font-semibold text-navy-700 hover:text-primary"
+                >
+                  {article.author_name}
+                </Link>
               </span>
               <span aria-hidden>•</span>
-              <time dateTime={article.published_at}>
+              <time dateTime={toISTISOString(article.published_at)}>
                 {formatDate(article.published_at)}
               </time>
               {article.revised_at ? (
@@ -144,7 +151,7 @@ export default async function ArticlePage({
                   <span aria-hidden>•</span>
                   <span>
                     Updated{" "}
-                    <time dateTime={article.revised_at}>
+                    <time dateTime={toISTISOString(article.revised_at)}>
                       {formatDate(article.revised_at)}
                     </time>
                   </span>
@@ -170,9 +177,34 @@ export default async function ArticlePage({
           stops wide content (the salary tables) from blowing the column out.
         */}
         <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_300px] lg:gap-16">
-          <article className="prose-legal min-w-0 max-w-3xl">
-            <ArticleBody markdown={article.body_markdown} />
-          </article>
+          <div className="min-w-0 max-w-3xl">
+            <article className="prose-legal min-w-0">
+              <ArticleBody markdown={article.body_markdown} />
+            </article>
+
+            {/*
+              Authorship, restated where a reader arrives after the argument
+              rather than before it. Dropped entirely when there is no bio — a
+              heading over an empty box says less than nothing.
+            */}
+            {article.author_bio ? (
+              <aside className="mt-12 border border-line bg-surface-muted p-6">
+                <h2 className="text-h4">About the author</h2>
+                <p className="mt-3 text-base font-semibold text-navy-700">
+                  {article.author_name}
+                </p>
+                <p className="mt-2 text-sm leading-relaxed text-slate-600">
+                  {article.author_bio}
+                </p>
+                <Link
+                  href={editorialAuthor.path}
+                  className="mt-4 inline-block text-sm font-semibold text-primary hover:underline"
+                >
+                  More about how we write these
+                </Link>
+              </aside>
+            ) : null}
+          </div>
 
           <aside className="min-w-0">
             <div className="space-y-6 lg:sticky lg:top-[98px]">

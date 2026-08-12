@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Inbox } from "lucide-react";
 
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import { formatDate } from "@/lib/utils";
+import { formatDateTime, toISTISOString } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Messages" };
 
@@ -37,10 +37,10 @@ export default async function AdminMessagesPage() {
                   {message.subject || "(no subject)"}
                 </h2>
                 <time
-                  dateTime={message.created_at}
+                  dateTime={toISTISOString(message.created_at)}
                   className="text-xs text-slate-400"
                 >
-                  {formatDate(message.created_at)}
+                  {formatDateTime(message.created_at)} IST
                 </time>
               </div>
               <p className="mt-1 text-sm text-slate-400">

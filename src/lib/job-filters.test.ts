@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { parseJobFilters } from "@/lib/job-filters";
 
 describe("parseJobFilters", () => {
-  it("defaults an empty query string to page 1, relevance sort", () => {
+  it("defaults an empty query string to page 1, newest first", () => {
     expect(parseJobFilters({})).toEqual({
       q: undefined,
       location: undefined,
@@ -13,7 +13,7 @@ describe("parseJobFilters", () => {
       experienceLevel: undefined,
       salaryBands: undefined,
       page: 1,
-      sort: "relevant",
+      sort: "newest",
     });
   });
 
@@ -68,9 +68,23 @@ describe("parseJobFilters", () => {
     expect(parseJobFilters({ page: "2; drop table" }).page).toBe(2);
   });
 
-  it("only honours known sort keys", () => {
+  it("only honours known sort keys, falling back to newest", () => {
     expect(parseJobFilters({ sort: "newest" }).sort).toBe("newest");
+    expect(parseJobFilters({ sort: "relevant" }).sort).toBe("relevant");
     expect(parseJobFilters({ sort: "salary-high" }).sort).toBe("salary-high");
-    expect(parseJobFilters({ sort: "posted_at desc" }).sort).toBe("relevant");
+    expect(parseJobFilters({ sort: "posted_at desc" }).sort).toBe("newest");
+    expect(parseJobFilters({ sort: "" }).sort).toBe("newest");
+  });
+
+  // ?company= carries a slug that reaches a database filter, so its shape is
+  // checked here — the boundary where URL input becomes typed data — rather
+  // than trusted downstream.
+  it("accepts a well-formed company slug and rejects anything else", () => {
+    expect(parseJobFilters({ company: "acme-labs" }).company).toBe("acme-labs");
+    expect(parseJobFilters({ company: "acme" }).company).toBe("acme");
+    expect(parseJobFilters({ company: "Acme Labs" }).company).toBeUndefined();
+    expect(parseJobFilters({ company: "acme,foo" }).company).toBeUndefined();
+    expect(parseJobFilters({ company: "-acme-" }).company).toBeUndefined();
+    expect(parseJobFilters({ company: "" }).company).toBeUndefined();
   });
 });

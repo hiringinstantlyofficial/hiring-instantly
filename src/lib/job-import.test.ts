@@ -50,9 +50,9 @@ describe("parseJobImport", () => {
   });
 
   it("unwraps a single-element array", () => {
-    const { values } = ok(`[${payload()}]`);
+    const { company } = ok(`[${payload()}]`);
 
-    expect(values.company_name).toBe("Acme");
+    expect(company?.name).toBe("Acme");
   });
 
   it("normalises formatted salaries to whole numbers", () => {
@@ -66,6 +66,13 @@ describe("parseJobImport", () => {
     const { values } = ok(payload({ posted_at: "2026-07-12T09:30:00.000Z" }));
 
     expect(values.posted_at).toBe("2026-07-12");
+  });
+
+  it("reads the day on the IST clock", () => {
+    // 20:00Z is already 01:30 the next morning in India.
+    const { values } = ok(payload({ posted_at: "2026-07-12T20:00:00.000Z" }));
+
+    expect(values.posted_at).toBe("2026-07-13");
   });
 
   it("drops categories the form does not offer", () => {
@@ -98,10 +105,57 @@ describe("parseJobImport", () => {
   });
 
   it("omits fields that are absent or null", () => {
-    const { values } = ok(payload({ company_website: null, capacity: undefined }));
+    const { values, company } = ok(
+      payload({ company_website: null, capacity: undefined }),
+    );
 
-    expect("company_website" in values).toBe(false);
+    expect(company?.website).toBeUndefined();
     expect("capacity" in values).toBe(false);
+  });
+
+  /*
+   * The company half of an import is reported separately from the job values
+   * and never lands in the form's fields. A company row is shared by every
+   * listing it owns, so a scrape must not be able to rewrite its description —
+   * the form matches the hint against the existing companies instead.
+   */
+  it("reports company fields apart from the job values", () => {
+    const { values, company } = ok(
+      payload({
+        company_website: "https://acme.test",
+        company_description: "Acme builds things.",
+        company_logo_url: "https://acme.test/logo.png",
+      }),
+    );
+
+    expect(company).toEqual({
+      name: "Acme",
+      website: "https://acme.test",
+      logoUrl: "https://acme.test/logo.png",
+      description: "Acme builds things.",
+    });
+    expect("company_name" in values).toBe(false);
+    expect("company_description" in values).toBe(false);
+  });
+
+  it("returns a null company when the JSON names none", () => {
+    const { company } = ok(
+      JSON.stringify({
+        title: "Backend Engineer",
+        location: "Bengaluru, Karnataka",
+        description: "A long description.",
+      }),
+    );
+
+    expect(company).toBeNull();
+  });
+
+  it("accepts JSON that carries only company fields", () => {
+    const result = parseJobImport(
+      JSON.stringify({ company_name: "Acme", company_website: "https://acme.test" }),
+    );
+
+    expect(result.ok).toBe(true);
   });
 
   it("warns when the listing is under the word target", () => {

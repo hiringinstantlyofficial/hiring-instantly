@@ -7,11 +7,14 @@ import { useForm, type FieldError } from "react-hook-form";
 import { TriangleAlert } from "lucide-react";
 
 import { revalidateJobPaths } from "@/app/actions/admin";
+import { CompanyPicker } from "@/components/admin/company-picker";
 import { Field, Fieldset, inputClass } from "@/components/admin/form-fields";
 import { Button } from "@/components/ui/button";
-import { parseJobImport } from "@/lib/job-import";
+import { useCompanyOptions } from "@/hooks/use-admin-companies";
+import { parseJobImport, type CompanyImportHint } from "@/lib/job-import";
 import { createClient } from "@/lib/supabase/client";
-import { cn, slugify } from "@/lib/utils";
+import { cn, slugify, toISTDateInput } from "@/lib/utils";
+import type { CompanyFormValues } from "@/lib/validations";
 import {
   jobFormSchema,
   type JobFormOutput,
@@ -29,20 +32,11 @@ import {
   type Job,
 } from "@/types/job";
 
-/** ISO timestamp -> the `yyyy-MM-dd` a date input expects. */
-function toDateInput(value: string | null): string {
-  if (!value) return "";
-  return new Date(value).toISOString().slice(0, 10);
-}
-
 function defaultsFrom(job?: Job): JobFormValues {
   return {
     title: job?.title ?? "",
     slug: job?.slug ?? "",
-    company_name: job?.company_name ?? "",
-    company_logo_url: job?.company_logo_url ?? "",
-    company_website: job?.company_website ?? "",
-    company_description: job?.company_description ?? "",
+    company_id: job?.company_id ?? "",
     location: job?.location ?? "",
     job_type: job?.job_type ?? "full-time",
     categories: job?.categories.join(", ") ?? "",
@@ -64,8 +58,8 @@ function defaultsFrom(job?: Job): JobFormValues {
     applicants_count: job?.applicants_count ?? 0,
     status: job?.status ?? "draft",
     is_featured: job?.is_featured ?? false,
-    posted_at: toDateInput(job?.posted_at ?? null),
-    valid_through: toDateInput(job?.valid_through ?? null),
+    posted_at: toISTDateInput(job?.posted_at),
+    valid_through: toISTDateInput(job?.valid_through),
   };
 }
 
@@ -73,6 +67,10 @@ export function JobForm({ job }: { job?: Job }) {
   const router = useRouter();
   const isEdit = Boolean(job);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Also feeds the import's "match or create" step and the company slug passed
+  // to revalidateJobPaths; the picker reads the same cached query.
+  const { data: companyOptions } = useCompanyOptions();
 
   // The schema transforms textareas and CSV fields into arrays, so what the
   // form holds (JobFormValues) is not what validation produces (JobFormOutput).
@@ -95,6 +93,12 @@ export function JobForm({ job }: { job?: Job }) {
 
   const title = watch("title");
   const slug = watch("slug");
+  const companyId = watch("company_id");
+
+  // Set when an import names a company we have no row for; hands the picker a
+  // seeded "New company" dialog rather than an empty one.
+  const [companyPrefill, setCompanyPrefill] =
+    useState<Partial<CompanyFormValues> | null>(null);
 
   // An import supplies its own slug, which is often deliberately different from
   // the title (`backend-engineer-acme`). A ref rather than dirty state because
@@ -118,10 +122,9 @@ export function JobForm({ job }: { job?: Job }) {
     const payload = {
       slug: values.slug || slugify(values.title),
       title: values.title,
-      company_name: values.company_name,
-      company_logo_url: values.company_logo_url,
-      company_website: values.company_website,
-      company_description: values.company_description,
+      // company_name is deliberately absent: a database trigger derives it
+      // from company_id, so it is not the app's to write.
+      company_id: values.company_id,
       location: values.location,
       job_type: values.job_type,
       categories: values.categories,
@@ -160,7 +163,10 @@ export function JobForm({ job }: { job?: Job }) {
       return;
     }
 
-    await revalidateJobPaths(payload.slug);
+    await revalidateJobPaths(
+      payload.slug,
+      companyOptions?.find((option) => option.id === payload.company_id)?.slug,
+    );
     router.push("/admin/jobs");
     router.refresh();
   });
@@ -172,7 +178,10 @@ export function JobForm({ job }: { job?: Job }) {
    * Merges imported values over whatever is already typed. Returns any extra
    * warnings the panel should show alongside the parser's own.
    */
-  const applyImport = (values: Partial<JobFormValues>) => {
+  const applyImport = (
+    values: Partial<JobFormValues>,
+    companyHint: CompanyImportHint | null,
+  ) => {
     const extra: string[] = [];
     const next = { ...values };
 
@@ -184,6 +193,43 @@ export function JobForm({ job }: { job?: Job }) {
 
     if (next.slug) slugFromImport.current = true;
     reset({ ...getValues(), ...next });
+
+    /*
+     * The company half of an import never writes into a company row.
+     *
+     * A company is shared by every listing it owns, so letting a scrape
+     * overwrite its description is precisely how the same employer used to end
+     * up with a different "About us" on each job. A name we already know
+     * selects that company and leaves its profile untouched; one we don't opens
+     * the create dialog prefilled, for the admin to review before saving.
+     */
+    if (companyHint?.name) {
+      const match = companyOptions?.find(
+        (option) =>
+          option.name.toLowerCase() === companyHint.name!.trim().toLowerCase(),
+      );
+
+      if (match) {
+        setValue("company_id", match.id, {
+          shouldDirty: true,
+          shouldValidate: true,
+        });
+        extra.push(
+          `Matched the existing company “${match.name}” — its profile was not overwritten`,
+        );
+      } else {
+        setCompanyPrefill({
+          name: companyHint.name,
+          website: companyHint.website ?? "",
+          logo_url: companyHint.logoUrl ?? "",
+          description: companyHint.description ?? "",
+        });
+        extra.push(
+          `No company named “${companyHint.name}” yet — review and save the new profile that just opened`,
+        );
+      }
+    }
+
     return extra;
   };
 
@@ -254,41 +300,18 @@ export function JobForm({ job }: { job?: Job }) {
       </Fieldset>
 
       <Fieldset legend="Company">
-        <Field label="Company name" required error={errorFor("company_name")}>
-          <input {...register("company_name")} className={inputClass} />
-        </Field>
-
-        <Field label="Website" error={errorFor("company_website")}>
-          <input
-            {...register("company_website")}
-            className={inputClass}
-            placeholder="https://example.com"
-          />
-        </Field>
-
-        <Field
-          label="Logo URL"
-          error={errorFor("company_logo_url")}
-          hint="Leave blank to show initials instead."
-        >
-          <input
-            {...register("company_logo_url")}
-            className={inputClass}
-            placeholder="https://…/logo.png"
-          />
-        </Field>
-
-        <Field
-          label="About the company"
-          error={errorFor("company_description")}
-          full
-        >
-          <textarea
-            {...register("company_description")}
-            rows={3}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
+        <CompanyPicker
+          value={companyId ?? ""}
+          onChange={(id) =>
+            setValue("company_id", id, {
+              shouldDirty: true,
+              shouldValidate: true,
+            })
+          }
+          error={errorFor("company_id")}
+          createPrefill={companyPrefill}
+          onCreateHandled={() => setCompanyPrefill(null)}
+        />
       </Fieldset>
 
       <Fieldset legend="Seniority and pay">
@@ -535,7 +558,10 @@ export function JobForm({ job }: { job?: Job }) {
 function ImportPanel({
   onApply,
 }: {
-  onApply: (values: Partial<JobFormValues>) => string[];
+  onApply: (
+    values: Partial<JobFormValues>,
+    company: CompanyImportHint | null,
+  ) => string[];
 }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -553,7 +579,7 @@ function ImportPanel({
       return;
     }
 
-    const extra = onApply(result.values);
+    const extra = onApply(result.values, result.company);
     setError(null);
     setWarnings([...result.warnings, ...extra]);
     setFilled(Object.keys(result.values).length);

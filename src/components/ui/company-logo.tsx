@@ -24,6 +24,13 @@ function tintFor(name: string): string {
 interface CompanyLogoProps {
   name: string;
   logoUrl?: string | null;
+  /**
+   * Rendered size in px. Applied as the *fallback* of a `--logo-size` custom
+   * property rather than a fixed width, so a caller that needs a different
+   * size per breakpoint can set that variable from a class —
+   * `className="[--logo-size:72px] sm:[--logo-size:96px]"` — which a plain
+   * inline width could not be overridden by.
+   */
   size?: number;
   className?: string;
   /** Set on the LCP candidate (first card / detail header) only. */
@@ -39,6 +46,8 @@ export function CompanyLogo({
 }: CompanyLogoProps) {
   // Explicit width/height on a fixed-size box keeps CLS at zero whether or not
   // the remote logo resolves.
+  const box = `var(--logo-size, ${size}px)`;
+
   if (logoUrl) {
     // next/image throws on a host that isn't in remotePatterns, and that list
     // is now an allowlist rather than a wildcard. An admin-pasted logo on some
@@ -49,7 +58,7 @@ export function CompanyLogo({
     return (
       <div
         className={cn("relative shrink-0 overflow-hidden bg-white", className)}
-        style={{ width: size, height: size }}
+        style={{ width: box, height: box }}
       >
         {optimizable ? (
           <Image
@@ -85,7 +94,11 @@ export function CompanyLogo({
         tintFor(name),
         className,
       )}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.36) }}
+      style={{
+        width: box,
+        height: box,
+        fontSize: `calc(${box} * 0.36)`,
+      }}
     >
       {initialsOf(name)}
     </div>

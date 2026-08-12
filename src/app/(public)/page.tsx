@@ -27,10 +27,13 @@ export const metadata: Metadata = {
 };
 
 export default async function HomePage() {
+  // Newest first, explicitly — the heading below promises "Latest Jobs", and
+  // the featured-first ordering used to push older promoted listings above
+  // genuinely new ones.
   const { jobs, total } = await getJobs({
     page: 1,
     perPage: JOBS_PER_PAGE,
-    sort: "relevant",
+    sort: "newest",
   });
 
   return (

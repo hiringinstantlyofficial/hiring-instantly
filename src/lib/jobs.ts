@@ -5,19 +5,32 @@ import { captureError } from "@/lib/observability";
 import { escapeLike, sanitizeSearchTerm } from "@/lib/postgrest";
 import { createSupabasePublicClient } from "@/lib/supabase/server";
 import {
+  DEFAULT_JOB_SORT,
   JOB_CATEGORIES,
   JOB_LEVELS,
   JOB_TYPES,
   SALARY_BANDS,
   type FacetCounts,
-  type Job,
   type JobCategory,
   type JobFilters,
   type JobLevel,
   type JobListResult,
   type JobType,
+  type JobWithCompany,
   type SalaryBandId,
 } from "@/types/job";
+
+/**
+ * The company columns embedded alongside every job read.
+ *
+ * Narrow on purpose — a job card needs a logo and a link, not the company's
+ * full description, and this select runs for every row of every listing page.
+ * The profile page fetches the rest through lib/companies.ts.
+ */
+const COMPANY_EMBED =
+  "company:companies(id, slug, name, logo_url, website, is_verified)";
+
+const JOB_SELECT = `*, ${COMPANY_EMBED}`;
 
 // Re-exported so callers keep a single import site for the listing layer, even
 // though the parser itself lives apart from the Supabase-dependent code.
@@ -110,6 +123,7 @@ function normalizeFilters(filters: JobFilters): NormalizedFilters {
   return {
     q: filters.q,
     location: filters.location,
+    company: filters.company,
     jobTypes: sorted(filters.jobTypes),
     categories: sorted(filters.categories),
     jobLevels: sorted(filters.jobLevels),
@@ -117,7 +131,7 @@ function normalizeFilters(filters: JobFilters): NormalizedFilters {
     salaryBands: sorted(filters.salaryBands),
     page: Math.max(filters.page ?? 1, 1),
     perPage: Math.min(Math.max(filters.perPage ?? JOBS_PER_PAGE, 1), 50),
-    sort: filters.sort ?? "relevant",
+    sort: filters.sort ?? DEFAULT_JOB_SORT,
   };
 }
 
@@ -190,16 +204,41 @@ function countFacets(rows: FacetRow[]): FacetCounts {
 const fetchJobPage = unstable_cache(
   async (
     filters: NormalizedFilters,
-  ): Promise<{ jobs: Job[]; total: number }> => {
+  ): Promise<{ jobs: JobWithCompany[]; total: number }> => {
     const supabase = createSupabasePublicClient();
     const from = (filters.page - 1) * filters.perPage;
     const term = filters.q ? sanitizeSearchTerm(filters.q) : "";
     const location = filters.location?.trim();
+    const company = filters.company?.trim();
+
+    // The company filter arrives as a slug (/jobs?company=acme), so it is
+    // resolved to an id first and applied as a plain column filter. The
+    // alternative — filtering on the embedded resource — would force the embed
+    // to an inner join, which silently drops any job whose company row is
+    // hidden. This lookup sits inside the cached function, so it costs one
+    // extra round trip per TTL rather than one per request.
+    let companyId: string | null = null;
+    if (company) {
+      const { data: companyRow, error: companyError } = await supabase
+        .from("companies")
+        .select("id")
+        .eq("slug", company)
+        .eq("status", "active")
+        .maybeSingle();
+
+      if (companyError) throw new JobQueryError(companyError);
+      // An unknown slug means no such company, which is an empty result — not
+      // an unfiltered listing of every job on the board.
+      if (!companyRow) return { jobs: [], total: 0 };
+      companyId = (companyRow as { id: string }).id;
+    }
 
     let listQuery = supabase
       .from("jobs")
-      .select("*", { count: "exact" })
+      .select(JOB_SELECT, { count: "exact" })
       .eq("status", "active");
+
+    if (companyId) listQuery = listQuery.eq("company_id", companyId);
 
     // `config` must match the one the search_vector column is built with,
     // otherwise stemming differs between the query and the index.
@@ -223,18 +262,27 @@ const fetchJobPage = unstable_cache(
       if (clause) listQuery = listQuery.or(clause);
     }
 
-    if (filters.sort === "newest") {
-      listQuery = listQuery.order("posted_at", { ascending: false });
-    } else if (filters.sort === "salary-high") {
+    if (filters.sort === "salary-high") {
       listQuery = listQuery
         .order("salary_max", { ascending: false, nullsFirst: false })
         .order("posted_at", { ascending: false });
-    } else {
-      // "Most relevant": featured listings first, then freshest.
+    } else if (filters.sort === "relevant") {
+      // "Featured first": promoted listings, then freshest.
       listQuery = listQuery
         .order("is_featured", { ascending: false })
         .order("posted_at", { ascending: false });
+    } else {
+      // The default. Newest listing on the board, first row on the page.
+      listQuery = listQuery.order("posted_at", { ascending: false });
     }
+
+    // `posted_at` is a day, not a moment: every job posted on the same date
+    // carries the identical IST-midnight timestamp, so it ties constantly. Left
+    // unbroken, Postgres is free to return tied rows in any order it likes,
+    // which shuffles listings between page 1 and page 2 — the same job shown
+    // twice, another never shown at all. `created_at` is distinct per row and
+    // insertion-ordered, which is the right sense for "newest" anyway.
+    listQuery = listQuery.order("created_at", { ascending: false });
 
     const { data, error, count } = await listQuery.range(
       from,
@@ -243,7 +291,10 @@ const fetchJobPage = unstable_cache(
 
     if (error) throw new JobQueryError(error);
 
-    return { jobs: (data ?? []) as Job[], total: count ?? 0 };
+    return {
+      jobs: (data ?? []) as unknown as JobWithCompany[],
+      total: count ?? 0,
+    };
   },
   ["jobs:list"],
   { tags: [JOBS_CACHE_TAG], revalidate: JOBS_CACHE_TTL },
@@ -337,35 +388,40 @@ export const getJobs = cache(async (
   };
 });
 
-export const getJobBySlug = cache(async (slug: string): Promise<Job | null> => {
-  const supabase = createSupabasePublicClient();
+export const getJobBySlug = cache(
+  async (slug: string): Promise<JobWithCompany | null> => {
+    const supabase = createSupabasePublicClient();
 
-  const { data, error } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("slug", slug)
-    .eq("status", "active")
-    .maybeSingle();
+    const { data, error } = await supabase
+      .from("jobs")
+      .select(JOB_SELECT)
+      .eq("slug", slug)
+      .eq("status", "active")
+      .maybeSingle();
 
-  if (error) {
-    reportError(`getJobBySlug(${slug})`, error);
-    return null;
-  }
+    if (error) {
+      reportError(`getJobBySlug(${slug})`, error);
+      return null;
+    }
 
-  return (data as Job | null) ?? null;
-});
+    return (data as unknown as JobWithCompany | null) ?? null;
+  },
+);
 
 /**
  * Jobs adjacent to the one being viewed: shared categories first, topped up
  * with same-job-type listings so the rail is never empty.
  */
-export const getSimilarJobs = cache(async (job: Job, limit = 4): Promise<Job[]> => {
+export const getSimilarJobs = cache(async (
+  job: JobWithCompany,
+  limit = 4,
+): Promise<JobWithCompany[]> => {
   const supabase = createSupabasePublicClient();
 
   const base = () =>
     supabase
       .from("jobs")
-      .select("*")
+      .select(JOB_SELECT)
       .eq("status", "active")
       .neq("id", job.id)
       .order("posted_at", { ascending: false })
@@ -386,9 +442,11 @@ export const getSimilarJobs = cache(async (job: Job, limit = 4): Promise<Job[]> 
 
   // Category matches first — they are the closer match — then top up with
   // same-job-type listings so the rail is never empty.
-  const collected = new Map<string, Job>();
-  for (const row of (byCategory?.data ?? []) as Job[]) collected.set(row.id, row);
-  for (const row of (byJobType.data ?? []) as Job[]) {
+  const collected = new Map<string, JobWithCompany>();
+  for (const row of (byCategory?.data ?? []) as unknown as JobWithCompany[]) {
+    collected.set(row.id, row);
+  }
+  for (const row of (byJobType.data ?? []) as unknown as JobWithCompany[]) {
     if (collected.size >= limit) break;
     if (!collected.has(row.id)) collected.set(row.id, row);
   }
@@ -396,90 +454,33 @@ export const getSimilarJobs = cache(async (job: Job, limit = 4): Promise<Job[]> 
   return [...collected.values()].slice(0, limit);
 });
 
-export const getFeaturedJobs = cache(async (limit = 4): Promise<Job[]> => {
-  const supabase = createSupabasePublicClient();
+export const getFeaturedJobs = cache(
+  async (limit = 4): Promise<JobWithCompany[]> => {
+    const supabase = createSupabasePublicClient();
 
-  const { data, error } = await supabase
-    .from("jobs")
-    .select("*")
-    .eq("status", "active")
-    .eq("is_featured", true)
-    .order("posted_at", { ascending: false })
-    .limit(limit);
+    const { data, error } = await supabase
+      .from("jobs")
+      .select(JOB_SELECT)
+      .eq("status", "active")
+      .eq("is_featured", true)
+      .order("posted_at", { ascending: false })
+      .limit(limit);
 
-  if (error) {
-    reportError("getFeaturedJobs", error);
-    return [];
-  }
-
-  return (data ?? []) as Job[];
-});
-
-export interface CompanySummary {
-  name: string;
-  logoUrl: string | null;
-  website: string | null;
-  jobCount: number;
-  locations: string[];
-}
-
-/**
- * Distinct company rollup for /companies.
- *
- * Deliberately NOT wrapped in unstable_cache. /companies is a fully static ISR
- * page, so its own revalidate window already means this runs once per window
- * rather than once per request — and because Next takes the *minimum* of the
- * page's revalidate and any cached read inside it, adding a shorter-lived cache
- * here would drag the page from a 10-minute window down to the cache's, making
- * it rebuild more often for no benefit.
- */
-export const getCompanies = cache(async (): Promise<CompanySummary[]> => {
-  const supabase = createSupabasePublicClient();
-
-  const { data, error } = await supabase
-    .from("jobs")
-    .select("company_name, company_logo_url, company_website, location")
-    .eq("status", "active")
-    .limit(FACET_SCAN_LIMIT);
-
-  if (error) {
-    reportError("getCompanies", error);
-    return [];
-  }
-
-  const rollup = new Map<string, CompanySummary & { locationSet: Set<string> }>();
-
-  const rows = (data ?? []) as unknown as Pick<
-    Job,
-    "company_name" | "company_logo_url" | "company_website" | "location"
-  >[];
-
-  for (const row of rows) {
-    const existing = rollup.get(row.company_name);
-    if (existing) {
-      existing.jobCount += 1;
-      existing.logoUrl ??= row.company_logo_url;
-      existing.website ??= row.company_website;
-      existing.locationSet.add(row.location);
-    } else {
-      rollup.set(row.company_name, {
-        name: row.company_name,
-        logoUrl: row.company_logo_url,
-        website: row.company_website,
-        jobCount: 1,
-        locations: [],
-        locationSet: new Set([row.location]),
-      });
+    if (error) {
+      reportError("getFeaturedJobs", error);
+      return [];
     }
-  }
 
-  return [...rollup.values()]
-    .map(({ locationSet, ...company }) => ({
-      ...company,
-      locations: [...locationSet].slice(0, 3),
-    }))
-    .sort((a, b) => b.jobCount - a.jobCount || a.name.localeCompare(b.name));
-});
+    return (data ?? []) as unknown as JobWithCompany[];
+  },
+);
+
+/*
+ * The distinct-company rollup that used to live here — scanning several
+ * thousand job rows and tallying them in JS — is gone. Companies are their own
+ * table now; see getCompanyDirectory() in lib/companies.ts, which gets the
+ * per-company job count out of Postgres instead.
+ */
 
 /** Slug + timestamp pairs for sitemap.xml. */
 export async function getAllActiveJobSlugs(): Promise<

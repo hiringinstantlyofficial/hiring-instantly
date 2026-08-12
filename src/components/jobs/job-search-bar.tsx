@@ -23,9 +23,27 @@ const CITY_SUGGESTIONS = [
   "Remote",
 ] as const;
 
-export function JobSearchBar({ variant = "hero" }: { variant?: "hero" | "inline" }) {
+interface JobSearchBarProps {
+  variant?: "hero" | "inline";
+  /**
+   * Namespaces the input ids. /jobs renders this twice — once in the hero for
+   * desktop, once in the mobile sticky bar — and both are in the DOM at all
+   * widths, so without a prefix the labels would point at duplicate ids.
+   */
+  idPrefix?: string;
+  /** The "Popular: …" line. Dropped in the sticky bar, where height is scarce. */
+  showPopular?: boolean;
+}
+
+export function JobSearchBar({
+  variant = "hero",
+  idPrefix,
+  showPopular = true,
+}: JobSearchBarProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
+
+  const id = (name: string) => (idPrefix ? `${idPrefix}-${name}` : name);
 
   const [keyword, setKeyword] = useState(searchParams.get("q") ?? "");
   const [location, setLocation] = useState(searchParams.get("location") ?? "");
@@ -53,11 +71,11 @@ export function JobSearchBar({ variant = "hero" }: { variant?: "hero" | "inline"
       >
         <div className="flex flex-1 items-center gap-3 sm:px-2">
           <Search className="size-6 shrink-0 text-navy-700" aria-hidden />
-          <label htmlFor="job-keyword" className="sr-only">
+          <label htmlFor={id("job-keyword")} className="sr-only">
             Job title or keyword
           </label>
           <input
-            id="job-keyword"
+            id={id("job-keyword")}
             name="q"
             type="search"
             value={keyword}
@@ -71,20 +89,20 @@ export function JobSearchBar({ variant = "hero" }: { variant?: "hero" | "inline"
 
         <div className="flex flex-1 items-center gap-3 sm:px-4">
           <MapPin className="size-6 shrink-0 text-navy-700" aria-hidden />
-          <label htmlFor="job-location" className="sr-only">
+          <label htmlFor={id("job-location")} className="sr-only">
             Location
           </label>
           <input
-            id="job-location"
+            id={id("job-location")}
             name="location"
             type="text"
-            list="city-suggestions"
+            list={id("city-suggestions")}
             value={location}
             onChange={(event) => setLocation(event.target.value)}
             placeholder="Any location in India"
             className="w-full min-w-0 border-0 border-b border-line py-2 text-base text-navy-700 placeholder:text-slate-400 focus:outline-none focus-visible:border-primary sm:border-b-0"
           />
-          <datalist id="city-suggestions">
+          <datalist id={id("city-suggestions")}>
             {CITY_SUGGESTIONS.map((city) => (
               <option key={city} value={city} />
             ))}
@@ -96,20 +114,22 @@ export function JobSearchBar({ variant = "hero" }: { variant?: "hero" | "inline"
         </Button>
       </form>
 
-      <p className="mt-4 text-sm text-slate-400">
-        Popular:{" "}
-        {popularSearches.map((term, index) => (
-          <span key={term}>
-            <a
-              href={`/jobs?q=${encodeURIComponent(term)}`}
-              className="hover:text-primary hover:underline"
-            >
-              {term}
-            </a>
-            {index < popularSearches.length - 1 ? ", " : ""}
-          </span>
-        ))}
-      </p>
+      {showPopular ? (
+        <p className="mt-4 text-sm text-slate-400">
+          Popular:{" "}
+          {popularSearches.map((term, index) => (
+            <span key={term}>
+              <a
+                href={`/jobs?q=${encodeURIComponent(term)}`}
+                className="hover:text-primary hover:underline"
+              >
+                {term}
+              </a>
+              {index < popularSearches.length - 1 ? ", " : ""}
+            </span>
+          ))}
+        </p>
+      ) : null}
     </div>
   );
 }

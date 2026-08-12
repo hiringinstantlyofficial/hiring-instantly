@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronUp, SlidersHorizontal, X } from "lucide-react";
+import { ChevronUp, X } from "lucide-react";
 import { useState, useTransition } from "react";
 
 import { hasActiveFilters, readList, toggleListValue, withParams } from "@/lib/search-params";
@@ -23,105 +23,98 @@ interface FilterSidebarProps {
   facets: FacetCounts;
 }
 
+/**
+ * The desktop filter column.
+ *
+ * Small screens do not render this at all: their filters live in the sticky bar
+ * at the top of /jobs (<MobileJobsBar>), which reuses <FilterGroups> below. One
+ * set of controls, two shells — rather than one component trying to be both a
+ * column and a sheet.
+ */
 export function FilterSidebar({ facets }: FilterSidebarProps) {
-  const [mobileOpen, setMobileOpen] = useState(false);
   const searchParams = useSearchParams();
   const active = hasActiveFilters(searchParams);
 
   return (
-    <>
-      {/* Mobile: filters collapse behind a button so the list stays above the fold. */}
-      <div className="flex items-center justify-between lg:hidden">
-        <button
-          type="button"
-          onClick={() => setMobileOpen((value) => !value)}
-          aria-expanded={mobileOpen}
-          aria-controls="job-filters"
-          className="inline-flex items-center gap-2 border border-line px-4 py-2.5 text-sm font-semibold text-navy-700"
-        >
-          <SlidersHorizontal className="size-4" aria-hidden />
-          Filters
-          {active ? (
-            <span className="ml-1 inline-flex size-5 items-center justify-center rounded-full bg-primary text-xs text-white">
-              •
-            </span>
-          ) : null}
-        </button>
-        {active ? <ClearFiltersButton /> : null}
-      </div>
-
-      <aside
-        id="job-filters"
-        aria-label="Filter jobs"
-        className={cn(
-          "shrink-0 lg:block lg:w-(--container-sidebar)",
-          mobileOpen ? "block" : "hidden",
-        )}
-      >
-        <div className="mt-6 space-y-8 border border-line p-5 lg:mt-0 lg:border-0 lg:p-0">
-          <div className="hidden items-center justify-between lg:flex">
-            {active ? <ClearFiltersButton /> : null}
+    <aside
+      id="job-filters"
+      aria-label="Filter jobs"
+      className="hidden shrink-0 lg:block lg:w-(--container-sidebar)"
+    >
+      <div className="space-y-8">
+        {active ? (
+          <div className="flex items-center justify-between">
+            <ClearFiltersButton />
           </div>
+        ) : null}
 
-          <FilterGroup title="Type of Employment">
-            {JOB_TYPES.map((type) => (
-              <FacetCheckbox
-                key={type}
-                paramKey="jobTypes"
-                value={type}
-                label={JOB_TYPE_LABELS[type]}
-                count={facets.jobTypes[type]}
-              />
-            ))}
-          </FilterGroup>
+        <FilterGroups facets={facets} />
+      </div>
+    </aside>
+  );
+}
 
-          <FilterGroup title="Categories">
-            {JOB_CATEGORIES.map((category) => (
-              <FacetCheckbox
-                key={category}
-                paramKey="categories"
-                value={category}
-                label={JOB_CATEGORY_LABELS[category]}
-                count={facets.categories[category]}
-              />
-            ))}
-          </FilterGroup>
+/** Every facet control, shared by the desktop column and the mobile sheet. */
+export function FilterGroups({ facets }: FilterSidebarProps) {
+  return (
+    <>
+      <FilterGroup title="Type of Employment">
+        {JOB_TYPES.map((type) => (
+          <FacetCheckbox
+            key={type}
+            paramKey="jobTypes"
+            value={type}
+            label={JOB_TYPE_LABELS[type]}
+            count={facets.jobTypes[type]}
+          />
+        ))}
+      </FilterGroup>
 
-          <FilterGroup title="Job Level">
-            {JOB_LEVELS.map((level) => (
-              <FacetCheckbox
-                key={level}
-                paramKey="jobLevels"
-                value={level}
-                label={JOB_LEVEL_LABELS[level]}
-                count={facets.jobLevels[level]}
-              />
-            ))}
-          </FilterGroup>
+      <FilterGroup title="Categories">
+        {JOB_CATEGORIES.map((category) => (
+          <FacetCheckbox
+            key={category}
+            paramKey="categories"
+            value={category}
+            label={JOB_CATEGORY_LABELS[category]}
+            count={facets.categories[category]}
+          />
+        ))}
+      </FilterGroup>
 
-          <FilterGroup title="Experience">
-            {EXPERIENCE_LEVELS.map((level) => (
-              <FacetRadio
-                key={level}
-                value={level}
-                label={EXPERIENCE_LEVEL_LABELS[level]}
-              />
-            ))}
-          </FilterGroup>
+      <FilterGroup title="Job Level">
+        {JOB_LEVELS.map((level) => (
+          <FacetCheckbox
+            key={level}
+            paramKey="jobLevels"
+            value={level}
+            label={JOB_LEVEL_LABELS[level]}
+            count={facets.jobLevels[level]}
+          />
+        ))}
+      </FilterGroup>
 
-          <FilterGroup title="Salary Range">
-            {SALARY_BANDS.map((band) => (
-              <FacetCheckbox
-                key={band.id}
-                paramKey="salaryBands"
-                value={band.id}
-                label={band.label}
-                count={facets.salaryBands[band.id]}
-              />
-            ))}
-          </FilterGroup>
-        </div>
-      </aside>
+      <FilterGroup title="Experience">
+        {EXPERIENCE_LEVELS.map((level) => (
+          <FacetRadio
+            key={level}
+            value={level}
+            label={EXPERIENCE_LEVEL_LABELS[level]}
+          />
+        ))}
+      </FilterGroup>
+
+      <FilterGroup title="Salary Range">
+        {SALARY_BANDS.map((band) => (
+          <FacetCheckbox
+            key={band.id}
+            paramKey="salaryBands"
+            value={band.id}
+            label={band.label}
+            count={facets.salaryBands[band.id]}
+          />
+        ))}
+      </FilterGroup>
     </>
   );
 }
@@ -238,7 +231,7 @@ function FacetRadio({ value, label }: { value: string; label: string }) {
   );
 }
 
-function ClearFiltersButton() {
+export function ClearFiltersButton() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();

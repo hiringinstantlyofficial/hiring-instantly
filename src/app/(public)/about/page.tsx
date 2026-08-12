@@ -3,7 +3,7 @@ import { BadgeCheck, HeartHandshake, Target, Users } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { ButtonLink } from "@/components/ui/button";
-import { absoluteUrl, siteConfig } from "@/lib/site";
+import { absoluteUrl, editorialAuthor, siteConfig } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "About Us",
@@ -88,6 +88,36 @@ export default function AboutPage() {
               A small, distributed team of engineers and recruiters working
               across India. We are not a staffing agency and we do not take a cut
               of anyone&apos;s salary — we simply run the board.
+            </p>
+
+            {/*
+              The target of the `rel="author"` link under every article byline.
+              A named writer on career advice is only worth something if the
+              name resolves to a real person somewhere on the site — this is
+              that somewhere, so the id must not be renamed without updating
+              editorialAuthor.path in lib/site.ts.
+            */}
+            <h2 id="editorial">Editorial</h2>
+            <p>
+              Our career guides are written by{" "}
+              <strong>{editorialAuthor.name}</strong>, a software engineer at an
+              MNC in India. He writes them in his own time, for a fairly ordinary
+              reason: he went through the same resumes, interview rounds and
+              offer conversations himself, and found that most of the advice
+              available was either generic or written for a different job
+              market.
+            </p>
+            <p>
+              He is not a recruiter, and the guides do not pretend otherwise.
+              They are written from the candidate&apos;s side of the table,
+              which is the side most of our readers are on.
+            </p>
+            <p>
+              Everything in the guides is written for the Indian market
+              specifically: rupee figures, the components of an actual CTC,
+              notice periods as they work under Indian employment contracts. We
+              do not publish sponsored articles, and no employer pays to appear
+              in one.
             </p>
 
             <h2>Working with us</h2>

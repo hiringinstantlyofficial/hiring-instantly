@@ -5,53 +5,130 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/* -------------------------------------------------------------------------- */
+/*  Dates — everything the site shows is on an IST wall clock                  */
+/* -------------------------------------------------------------------------- */
+
+export const IST_TIME_ZONE = "Asia/Kolkata";
+
 /**
- * "2 days ago" / "3 weeks ago" — matches the posted-date style in the design.
- *
- * Reads the clock, so the result is not stable between a server render and the
- * client hydration that follows it. Render it through <RelativeTime>, which
- * owns that mismatch, rather than calling it inline in a Server Component.
+ * India has been a fixed UTC+05:30 since 1945 and has no DST, so plain offset
+ * arithmetic is exact here — no Intl round-trip, and the inverse (IST wall
+ * clock -> instant) is exact too, which `Intl` alone cannot give us.
  */
-export function relativeTime(input: string | Date, now: number = Date.now()): string {
-  const then = typeof input === "string" ? new Date(input) : input;
-  if (Number.isNaN(then.getTime())) return "";
+const IST_OFFSET_MINUTES = 330;
+const IST_OFFSET_MS = IST_OFFSET_MINUTES * 60_000;
 
-  const seconds = Math.round((now - then.getTime()) / 1000);
+/** `yyyy-MM-dd` with no time part — a plain calendar date, not an instant. */
+const PLAIN_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-  if (seconds < 60) return "just now";
-
-  const units: [Intl.RelativeTimeFormatUnit, number][] = [
-    ["minute", 60],
-    ["hour", 3600],
-    ["day", 86400],
-    ["week", 604800],
-    ["month", 2629800],
-    ["year", 31557600],
-  ];
-
-  let unit: Intl.RelativeTimeFormatUnit = "minute";
-  let divisor = 60;
-
-  for (const [candidateUnit, candidateDivisor] of units) {
-    if (seconds >= candidateDivisor) {
-      unit = candidateUnit;
-      divisor = candidateDivisor;
-    }
-  }
-
-  const formatter = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
-  return formatter.format(-Math.floor(seconds / divisor), unit);
+function toDate(input: string | Date): Date | null {
+  const date = typeof input === "string" ? new Date(input) : input;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-/** ISO date as "12 Jul 2026", stable between server and client. */
+/**
+ * The calendar/clock fields an instant shows on an IST wall clock.
+ *
+ * Shifting the instant and then reading the UTC getters is the standard trick:
+ * the UTC fields of `t + 5h30m` are exactly the IST fields of `t`.
+ */
+function istFields(date: Date) {
+  const shifted = new Date(date.getTime() + IST_OFFSET_MS);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth() + 1,
+    day: shifted.getUTCDate(),
+    hours: shifted.getUTCHours(),
+    minutes: shifted.getUTCMinutes(),
+    seconds: shifted.getUTCSeconds(),
+  };
+}
+
+const pad = (value: number, width = 2) => String(value).padStart(width, "0");
+
+/**
+ * A timestamp as "12-08-2026" — DD-MM-YYYY on an IST clock.
+ *
+ * Supabase stores `timestamptz`, which comes back as a UTC ISO string. A job
+ * posted at 01:00 IST is `…T19:30:00Z` the day before, so formatting in UTC
+ * showed the wrong day to every Indian reader. The offset is applied here, once.
+ *
+ * Timezone-pinned rather than locale-pinned, so a server render and the client
+ * hydration that follows it always agree.
+ */
 export function formatDate(input: string | Date): string {
-  const date = typeof input === "string" ? new Date(input) : input;
-  return new Intl.DateTimeFormat("en-IN", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    timeZone: "UTC",
-  }).format(date);
+  const date = toDate(input);
+  if (!date) return "";
+  const { year, month, day } = istFields(date);
+  return `${pad(day)}-${pad(month)}-${year}`;
+}
+
+/** As `formatDate`, with the IST time appended: "12-08-2026, 14:30". */
+export function formatDateTime(input: string | Date): string {
+  const date = toDate(input);
+  if (!date) return "";
+  const { hours, minutes } = istFields(date);
+  return `${formatDate(date)}, ${pad(hours)}:${pad(minutes)}`;
+}
+
+/**
+ * A timestamp as `2026-08-12T14:30:00+05:30` — the same instant as the stored
+ * UTC string, written on the IST clock.
+ *
+ * Used for `<time dateTime>` and JSON-LD, where the value has to stay a machine
+ * readable ISO 8601 instant but should read as IST to anyone inspecting it.
+ */
+export function toISTISOString(input: string | Date): string {
+  const date = toDate(input);
+  if (!date) return "";
+  const { year, month, day, hours, minutes, seconds } = istFields(date);
+  return `${year}-${pad(month)}-${pad(day)}T${pad(hours)}:${pad(minutes)}:${pad(seconds)}+05:30`;
+}
+
+/**
+ * A timestamp -> the `yyyy-MM-dd` an `<input type="date">` expects, read on the
+ * IST clock so the admin sees back the day they picked rather than the day
+ * before.
+ */
+export function toISTDateInput(input: string | Date | null | undefined): string {
+  if (!input) return "";
+  const date = toDate(input);
+  if (!date) return "";
+  const { year, month, day } = istFields(date);
+  return `${year}-${pad(month)}-${pad(day)}`;
+}
+
+/**
+ * The inverse: a `yyyy-MM-dd` from a date input -> the ISO instant of that day's
+ * IST midnight (`2026-08-12` -> `2026-08-11T18:30:00.000Z`).
+ *
+ * This is what makes the round-trip through Supabase stable — and it is also
+ * what makes scheduled publishing correct, since an article dated 12-08-2026
+ * should go live at IST midnight, not 05:30 IST.
+ *
+ * Anything that already carries a time is passed through as a normal instant.
+ */
+export function istDateInputToISO(
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+
+  if (PLAIN_DATE.test(value)) {
+    const midnightUtc = new Date(`${value}T00:00:00.000Z`).getTime();
+    if (Number.isNaN(midnightUtc)) return null;
+    return new Date(midnightUtc - IST_OFFSET_MS).toISOString();
+  }
+
+  const date = toDate(value);
+  return date ? date.toISOString() : null;
+}
+
+/** True when the timestamp is still ahead of now — i.e. scheduled, not live. */
+export function isFutureDate(input: string | Date | null | undefined): boolean {
+  if (!input) return false;
+  const date = toDate(input);
+  return date ? date.getTime() > Date.now() : false;
 }
 
 const LAKH = 100000;

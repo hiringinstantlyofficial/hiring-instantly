@@ -4,6 +4,7 @@ import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { ARTICLES_CACHE_TAG } from "@/lib/blog";
+import { COMPANIES_CACHE_TAG } from "@/lib/companies";
 import { JOBS_CACHE_TAG } from "@/lib/jobs";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -17,13 +18,35 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  * request. revalidatePath then drops the rendered HTML for the routes that are
  * statically generated or ISR.
  */
-export async function revalidateJobPaths(slug?: string) {
+export async function revalidateJobPaths(slug?: string, companySlug?: string) {
   revalidateTag(JOBS_CACHE_TAG);
+  // Publishing or closing a listing changes the role count on its company's
+  // profile and on the /companies directory, both of which are cached behind
+  // their own tag.
+  revalidateTag(COMPANIES_CACHE_TAG);
   revalidatePath("/");
   revalidatePath("/jobs");
   revalidatePath("/companies");
   revalidatePath("/sitemap.xml");
   if (slug) revalidatePath(`/jobs/${slug}`);
+  if (companySlug) revalidatePath(`/companies/${companySlug}`);
+}
+
+/**
+ * The same two layers for a company.
+ *
+ * /jobs is flushed too: a rename propagates to every listing's `company_name`
+ * through a database trigger, so the cards would otherwise keep showing the old
+ * name until the jobs cache expired on its own.
+ */
+export async function revalidateCompanyPaths(slug?: string) {
+  revalidateTag(COMPANIES_CACHE_TAG);
+  revalidateTag(JOBS_CACHE_TAG);
+  revalidatePath("/");
+  revalidatePath("/jobs");
+  revalidatePath("/companies");
+  revalidatePath("/sitemap.xml");
+  if (slug) revalidatePath(`/companies/${slug}`);
 }
 
 /**

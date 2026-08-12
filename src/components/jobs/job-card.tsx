@@ -4,12 +4,11 @@ import { CapacityMeter } from "@/components/jobs/capacity-meter";
 import { CategoryBadge, JobTypeBadge } from "@/components/ui/badge";
 import { ButtonLink } from "@/components/ui/button";
 import { CompanyLogo } from "@/components/ui/company-logo";
-import { RelativeTime } from "@/components/ui/relative-time";
-import { cn, formatSalaryRange, truncate } from "@/lib/utils";
-import type { Job } from "@/types/job";
+import { cn, formatDate, formatSalaryRange, toISTISOString, truncate } from "@/lib/utils";
+import type { JobWithCompany } from "@/types/job";
 
 interface JobCardProps {
-  job: Job;
+  job: JobWithCompany;
   view?: "list" | "grid";
   /** True for the first card, which is the LCP candidate. */
   priority?: boolean;
@@ -23,13 +22,19 @@ export function JobCard({ job, view = "list", priority = false }: JobCardProps) 
   );
   const href = `/jobs/${job.slug}`;
 
+  // company_name is the trigger-maintained mirror on the job row, so the card
+  // still names the employer even if the company row is hidden and the embed
+  // comes back null. The logo and the profile link do need the row.
+  const companyName = job.company?.name ?? job.company_name;
+  const companyHref = job.company ? `/companies/${job.company.slug}` : null;
+
   if (view === "grid") {
     return (
       <article className="flex h-full flex-col border border-line bg-white p-6">
         <div className="flex items-start justify-between gap-4">
           <CompanyLogo
-            name={job.company_name}
-            logoUrl={job.company_logo_url}
+            name={companyName}
+            logoUrl={job.company?.logo_url}
             priority={priority}
           />
           <JobTypeBadge jobType={job.job_type} />
@@ -41,7 +46,14 @@ export function JobCard({ job, view = "list", priority = false }: JobCardProps) 
           </Link>
         </h3>
         <p className="mt-1 text-sm text-slate-400">
-          {job.company_name} • {job.location}
+          {companyHref ? (
+            <Link href={companyHref} className="hover:text-primary">
+              {companyName}
+            </Link>
+          ) : (
+            companyName
+          )}{" "}
+          • {job.location}
         </p>
 
         <p className="mt-4 line-clamp-3 text-sm leading-relaxed text-slate-600">
@@ -58,7 +70,12 @@ export function JobCard({ job, view = "list", priority = false }: JobCardProps) 
           <span className="text-sm font-semibold text-navy-700">
             {salary ?? "Salary not disclosed"}
           </span>
-          <RelativeTime date={job.posted_at} className="text-xs text-slate-400" />
+          <time
+            dateTime={toISTISOString(job.posted_at)}
+            className="text-xs text-slate-400"
+          >
+            {formatDate(job.posted_at)}
+          </time>
         </div>
       </article>
     );
@@ -68,8 +85,8 @@ export function JobCard({ job, view = "list", priority = false }: JobCardProps) 
     <article className="border border-line bg-white p-6 transition-colors hover:border-primary/40">
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
         <CompanyLogo
-          name={job.company_name}
-          logoUrl={job.company_logo_url}
+          name={companyName}
+          logoUrl={job.company?.logo_url}
           priority={priority}
           className="sm:mr-2"
         />
@@ -82,7 +99,14 @@ export function JobCard({ job, view = "list", priority = false }: JobCardProps) 
           </h3>
 
           <p className="mt-1 text-base text-slate-400">
-            {job.company_name} <span aria-hidden>•</span> {job.location}
+            {companyHref ? (
+              <Link href={companyHref} className="hover:text-primary">
+                {companyName}
+              </Link>
+            ) : (
+              companyName
+            )}{" "}
+            <span aria-hidden>•</span> {job.location}
           </p>
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -116,7 +140,10 @@ export function JobCard({ job, view = "list", priority = false }: JobCardProps) 
             capacity={job.capacity}
           />
           <p className="text-xs text-slate-400 sm:text-right">
-            Posted <RelativeTime date={job.posted_at} />
+            Posted{" "}
+            <time dateTime={toISTISOString(job.posted_at)}>
+              {formatDate(job.posted_at)}
+            </time>
           </p>
         </div>
       </div>

@@ -54,6 +54,18 @@ export type Article = {
   category: ArticleCategory;
   body_markdown: string;
 
+  /**
+   * The byline. Career advice is "Your Money or Your Life" territory, where a
+   * named author counts for considerably more than an organisation — so this is
+   * not null, and the column carries a default rather than allowing a blank.
+   */
+  author_name: string;
+  /**
+   * Two or three sentences of credentials, shown under the article. Nullable:
+   * the "About the author" block is dropped when there is nothing to say.
+   */
+  author_bio: string | null;
+
   /** Displayed as "N min read". Estimated from the body on save. */
   reading_minutes: number;
   /** Surfaced on the article page and fed to `keywords` in the metadata. */

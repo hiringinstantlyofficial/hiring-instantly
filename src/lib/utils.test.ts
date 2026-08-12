@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 
 import {
   formatDate,
+  formatDateTime,
   formatSalaryRange,
   initialsOf,
-  relativeTime,
+  isFutureDate,
+  istDateInputToISO,
   slugify,
+  toISTDateInput,
+  toISTISOString,
   toPlainText,
   truncate,
 } from "@/lib/utils";
@@ -90,41 +94,99 @@ describe("truncate", () => {
   });
 });
 
-describe("relativeTime", () => {
-  const now = Date.UTC(2026, 6, 30, 12, 0, 0);
-
-  it("reports sub-minute ages as 'just now'", () => {
-    expect(relativeTime(new Date(now - 30_000).toISOString(), now)).toBe(
-      "just now",
-    );
+describe("formatDate", () => {
+  it("formats as DD-MM-YYYY", () => {
+    expect(formatDate("2026-07-12T09:00:00.000Z")).toBe("12-07-2026");
   });
 
-  it("picks the largest fitting unit", () => {
-    expect(relativeTime(new Date(now - 5 * 60_000).toISOString(), now)).toBe(
-      "5 minutes ago",
-    );
-    expect(relativeTime(new Date(now - 3 * 3_600_000).toISOString(), now)).toBe(
-      "3 hours ago",
-    );
-    expect(relativeTime(new Date(now - 2 * 86_400_000).toISOString(), now)).toBe(
-      "2 days ago",
-    );
-    expect(
-      relativeTime(new Date(now - 3 * 604_800_000).toISOString(), now),
-    ).toBe("3 weeks ago");
+  it("zero-pads single-digit days and months", () => {
+    expect(formatDate("2026-01-05T09:00:00.000Z")).toBe("05-01-2026");
+  });
+
+  it("reads the day on the IST clock, not UTC", () => {
+    // 19:30Z is 01:00 IST the next morning — the whole point of the change.
+    expect(formatDate("2026-07-12T19:30:00.000Z")).toBe("13-07-2026");
+    // And 18:29Z is still 23:59 IST on the same day.
+    expect(formatDate("2026-07-12T18:29:00.000Z")).toBe("12-07-2026");
+  });
+
+  it("is pinned to IST rather than the host timezone, so SSR and hydration agree", () => {
+    expect(formatDate("2026-07-12T23:30:00.000Z")).toBe("13-07-2026");
+    expect(formatDate("2026-07-12T00:30:00.000Z")).toBe("12-07-2026");
   });
 
   it("returns an empty string for an unparseable date instead of throwing", () => {
-    expect(relativeTime("not-a-date", now)).toBe("");
+    expect(formatDate("not-a-date")).toBe("");
   });
 });
 
-describe("formatDate", () => {
-  it("formats in UTC so server and client agree", () => {
-    // Fixed timezone is the point: without it this flips a day either side of
-    // midnight depending on where it runs.
-    expect(formatDate("2026-07-12T23:30:00.000Z")).toBe("12 Jul 2026");
-    expect(formatDate("2026-07-12T00:30:00.000Z")).toBe("12 Jul 2026");
+describe("formatDateTime", () => {
+  it("appends the IST time", () => {
+    expect(formatDateTime("2026-07-12T09:00:00.000Z")).toBe("12-07-2026, 14:30");
+  });
+});
+
+describe("toISTISOString", () => {
+  it("rewrites the instant on the IST clock without moving it", () => {
+    expect(toISTISOString("2026-07-12T09:00:00.000Z")).toBe(
+      "2026-07-12T14:30:00+05:30",
+    );
+    expect(toISTISOString("2026-07-12T19:30:00.000Z")).toBe(
+      "2026-07-13T01:00:00+05:30",
+    );
+  });
+
+  it("stays the same moment in time", () => {
+    const utc = "2026-07-12T19:30:00.000Z";
+    expect(Date.parse(toISTISOString(utc))).toBe(Date.parse(utc));
+  });
+});
+
+describe("toISTDateInput", () => {
+  it("gives back the IST calendar day", () => {
+    expect(toISTDateInput("2026-07-12T19:30:00.000Z")).toBe("2026-07-13");
+    expect(toISTDateInput("2026-07-12T00:30:00.000Z")).toBe("2026-07-12");
+  });
+
+  it("returns an empty string for nothing", () => {
+    expect(toISTDateInput(null)).toBe("");
+    expect(toISTDateInput(undefined)).toBe("");
+    expect(toISTDateInput("garbage")).toBe("");
+  });
+});
+
+describe("istDateInputToISO", () => {
+  it("reads a plain date as IST midnight, not UTC midnight", () => {
+    expect(istDateInputToISO("2026-08-12")).toBe("2026-08-11T18:30:00.000Z");
+  });
+
+  it("round-trips with toISTDateInput", () => {
+    const day = "2026-08-12";
+    expect(toISTDateInput(istDateInputToISO(day)!)).toBe(day);
+    expect(formatDate(istDateInputToISO(day)!)).toBe("12-08-2026");
+  });
+
+  it("passes an instant through untouched", () => {
+    expect(istDateInputToISO("2026-08-12T09:00:00.000Z")).toBe(
+      "2026-08-12T09:00:00.000Z",
+    );
+  });
+
+  it("returns null for empty or unparseable input", () => {
+    expect(istDateInputToISO("")).toBeNull();
+    expect(istDateInputToISO("garbage")).toBeNull();
+  });
+});
+
+describe("isFutureDate", () => {
+  it("only reports timestamps ahead of now", () => {
+    expect(isFutureDate(new Date(Date.now() + 86_400_000).toISOString())).toBe(
+      true,
+    );
+    expect(isFutureDate(new Date(Date.now() - 86_400_000).toISOString())).toBe(
+      false,
+    );
+    expect(isFutureDate(null)).toBe(false);
   });
 });
 

@@ -10,7 +10,7 @@ import {
 import { revalidateJobPaths } from "@/app/actions/admin";
 import { containsPattern } from "@/lib/postgrest";
 import { createClient } from "@/lib/supabase/client";
-import type { Job, JobStatus } from "@/types/job";
+import type { Job, JobStatus, JobWithCompany } from "@/types/job";
 
 export interface AdminJobFilters {
   search: string;
@@ -32,9 +32,14 @@ export const adminJobKeys = {
 export function useAdminJobs(filters: AdminJobFilters) {
   return useQuery({
     queryKey: adminJobKeys.list(filters),
-    queryFn: async (): Promise<Job[]> => {
+    queryFn: async (): Promise<JobWithCompany[]> => {
       const supabase = createClient();
-      let query = supabase.from("jobs").select("*");
+      // The embed carries the logo for the table's first column. The `.or()`
+      // search below still runs against the denormalised company_name on the
+      // job row, so it needs no join.
+      let query = supabase
+        .from("jobs")
+        .select("*, company:companies(id, slug, name, logo_url, website, is_verified)");
 
       if (filters.status !== "all") {
         query = query.eq("status", filters.status);
@@ -65,7 +70,7 @@ export function useAdminJobs(filters: AdminJobFilters) {
 
       const { data, error } = await query.limit(200);
       if (error) throw new Error(error.message);
-      return (data ?? []) as Job[];
+      return (data ?? []) as unknown as JobWithCompany[];
     },
   });
 }
@@ -131,11 +136,11 @@ export function useDeleteJob() {
     // Optimistic: drop the row immediately, restore it if the delete fails.
     onMutate: async (job) => {
       await queryClient.cancelQueries({ queryKey: adminJobKeys.all });
-      const snapshot = queryClient.getQueriesData<Job[]>({
+      const snapshot = queryClient.getQueriesData<JobWithCompany[]>({
         queryKey: adminJobKeys.all,
       });
 
-      queryClient.setQueriesData<Job[]>({ queryKey: adminJobKeys.all }, (old) =>
+      queryClient.setQueriesData<JobWithCompany[]>({ queryKey: adminJobKeys.all }, (old) =>
         Array.isArray(old) ? old.filter((row) => row.id !== job.id) : old,
       );
 
@@ -173,11 +178,11 @@ export function useUpdateJobStatus() {
     },
     onMutate: async ({ job, status }) => {
       await queryClient.cancelQueries({ queryKey: adminJobKeys.all });
-      const snapshot = queryClient.getQueriesData<Job[]>({
+      const snapshot = queryClient.getQueriesData<JobWithCompany[]>({
         queryKey: adminJobKeys.all,
       });
 
-      queryClient.setQueriesData<Job[]>({ queryKey: adminJobKeys.all }, (old) =>
+      queryClient.setQueriesData<JobWithCompany[]>({ queryKey: adminJobKeys.all }, (old) =>
         Array.isArray(old)
           ? old.map((row) => (row.id === job.id ? { ...row, status } : row))
           : old,

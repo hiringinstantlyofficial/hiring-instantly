@@ -19,7 +19,7 @@ export default async function JobOpengraphImage({
   const job = await getJobBySlug(slug);
 
   const title = job?.title ?? "Job opening";
-  const company = job?.company_name ?? siteConfig.name;
+  const company = job?.company?.name ?? job?.company_name ?? siteConfig.name;
   const location = job?.location ?? "India";
   const jobType = job ? JOB_TYPE_LABELS[job.job_type] : "Full-Time";
   const salary = job

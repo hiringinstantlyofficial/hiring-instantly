@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Building2 } from "lucide-react";
+import { BadgeCheck, Building2, ChevronRight, MapPin } from "lucide-react";
 
 import { PageHeader } from "@/components/layout/page-header";
 import { ButtonLink } from "@/components/ui/button";
+import { CompanyCover } from "@/components/ui/company-cover";
 import { CompanyLogo } from "@/components/ui/company-logo";
-import { getCompanies } from "@/lib/jobs";
+import { getCompanyDirectory } from "@/lib/companies";
 import { siteConfig } from "@/lib/site";
+import { truncate } from "@/lib/utils";
 
 export const revalidate = 600;
 
@@ -17,7 +19,7 @@ export const metadata: Metadata = {
 };
 
 export default async function CompaniesPage() {
-  const companies = await getCompanies();
+  const companies = await getCompanyDirectory();
 
   return (
     <>
@@ -31,35 +33,83 @@ export default async function CompaniesPage() {
         breadcrumb={[{ name: "Companies", href: "/companies" }]}
       />
 
-      <div className="container-page py-12 lg:py-16">
+      <div className="container-page py-8 sm:py-12 lg:py-16">
         {companies.length ? (
-          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          // Below `sm` these are list rows, not cards: a single column of
+          // compact taps with hairline separators. The card treatment (cover
+          // strip, generous padding) only earns its space once the grid has
+          // more than one column.
+          <ul className="divide-y divide-line border-y border-line sm:grid sm:gap-4 sm:divide-y-0 sm:border-0 sm:grid-cols-2 lg:grid-cols-3">
             {companies.map((company) => (
-              <li key={company.name}>
+              <li key={company.id}>
                 <Link
-                  href={`/jobs?q=${encodeURIComponent(company.name)}`}
+                  href={`/companies/${company.slug}`}
                   prefetch={true}
-                  className="flex h-full flex-col border border-line bg-white p-6 transition-colors hover:border-primary/40"
+                  className="group flex h-full flex-col overflow-hidden bg-white transition-colors active:bg-surface-muted sm:border sm:border-line sm:active:bg-white sm:hover:border-primary/40"
                 >
-                  <div className="flex items-center gap-4">
-                    <CompanyLogo
-                      name={company.name}
-                      logoUrl={company.logoUrl}
-                    />
-                    <div className="min-w-0">
-                      <h2 className="truncate text-h4">{company.name}</h2>
-                      <p className="text-sm text-slate-400">
-                        {company.jobCount}{" "}
-                        {company.jobCount === 1 ? "opening" : "openings"}
-                      </p>
-                    </div>
-                  </div>
+                  {/* A thin strip of the cover, so the card previews the
+                      profile it opens rather than looking identical to it.
+                      Hidden on phones, where 20 empty pattern bands read as
+                      broken images rather than as design. */}
+                  <CompanyCover
+                    coverUrl={company.cover_url}
+                    name={company.name}
+                    className="hidden h-16 sm:block"
+                  />
 
-                  {company.locations.length ? (
-                    <p className="mt-4 text-sm text-slate-600">
-                      {company.locations.join(" · ")}
-                    </p>
-                  ) : null}
+                  <div className="flex flex-1 flex-col px-4 py-3.5 sm:p-6">
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <CompanyLogo
+                        name={company.name}
+                        logoUrl={company.logo_url}
+                        className="[--logo-size:40px] sm:[--logo-size:48px]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h2 className="flex items-center gap-1.5 text-base font-semibold sm:text-h4">
+                          <span className="truncate group-hover:text-primary">
+                            {company.name}
+                          </span>
+                          {company.is_verified ? (
+                            <BadgeCheck
+                              className="size-4 shrink-0 text-primary"
+                              aria-label="Verified employer"
+                            />
+                          ) : null}
+                        </h2>
+                        <p className="mt-0.5 truncate text-sm text-slate-400">
+                          {company.jobCount}{" "}
+                          {company.jobCount === 1 ? "opening" : "openings"}
+                          {company.headquarters ? (
+                            <span className="sm:hidden">
+                              {" "}
+                              <span aria-hidden>•</span>{" "}
+                              {company.headquarters}
+                            </span>
+                          ) : null}
+                        </p>
+                      </div>
+
+                      {/* Tap affordance: on a phone the row has no button and
+                          no hover state to signal that it opens something. */}
+                      <ChevronRight
+                        aria-hidden
+                        className="size-5 shrink-0 text-slate-300 sm:hidden"
+                      />
+                    </div>
+
+                    {company.tagline ? (
+                      <p className="mt-4 line-clamp-2 hidden text-sm leading-relaxed text-slate-600 sm:block">
+                        {truncate(company.tagline, 120)}
+                      </p>
+                    ) : null}
+
+                    {company.headquarters ? (
+                      <p className="mt-auto hidden items-center gap-1.5 pt-4 text-sm text-slate-400 sm:flex">
+                        <MapPin className="size-4 shrink-0" aria-hidden />
+                        {company.headquarters}
+                      </p>
+                    ) : null}
+                  </div>
                 </Link>
               </li>
             ))}

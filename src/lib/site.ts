@@ -49,6 +49,19 @@ export const siteConfig = {
   locale: "en_IN",
 } as const;
 
+/**
+ * The editor behind the career articles, and the byline the admin form starts
+ * from. Named here rather than only in the database so the Person JSON-LD, the
+ * About page and the form all assert the same identity — a byline that appears
+ * on the articles but nowhere else on the site is the kind of unverifiable
+ * authorship that is worth less than none.
+ */
+export const editorialAuthor = {
+  name: "Rakshith Gowda",
+  /** Anchor on the About page, so the Person node points somewhere real. */
+  path: "/about#editorial",
+} as const;
+
 export const mainNav = [
   { href: "/", label: "Find Jobs" },
   { href: "/companies", label: "Browse Companies" },
