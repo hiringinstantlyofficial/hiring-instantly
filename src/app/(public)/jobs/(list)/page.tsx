@@ -5,6 +5,10 @@ import { FilterSidebar } from "@/components/jobs/filter-sidebar";
 import { JobList } from "@/components/jobs/job-list";
 import { JobPagination } from "@/components/jobs/job-pagination";
 import { JobSearchBar } from "@/components/jobs/job-search-bar";
+import {
+  JobsNavigationProvider,
+  PendingResults,
+} from "@/components/jobs/jobs-navigation";
 import { MobileInfiniteJobs } from "@/components/jobs/mobile-infinite-jobs";
 import {
   MobileJobsBar,
@@ -114,7 +118,9 @@ export default async function JobsPage({
     : describeFilters(params);
 
   return (
-    <>
+    // Search, filters and sort all re-query on the server. The provider is what
+    // lets the control that was used spin while the results below it dim.
+    <JobsNavigationProvider>
       <section className="hero-pattern border-b border-line-soft">
         <div className="container-page py-10">
           <h1 className="text-2xl font-bold sm:text-3xl">{heading}</h1>
@@ -145,7 +151,7 @@ export default async function JobsPage({
             <FilterSidebar facets={facets} />
           </Suspense>
 
-          <div className="min-w-0 flex-1">
+          <PendingResults className="min-w-0 flex-1">
             <div className="flex flex-wrap items-end justify-between gap-4">
               <p className="text-sm text-slate-400">
                 {/* Mobile keeps the total alone. The infinite scroll makes the
@@ -189,9 +195,9 @@ export default async function JobsPage({
                 searchParams={params}
               />
             </MobileInfiniteJobs>
-          </div>
+          </PendingResults>
         </div>
       </section>
-    </>
+    </JobsNavigationProvider>
   );
 }

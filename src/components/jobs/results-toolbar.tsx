@@ -1,9 +1,9 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { LayoutGrid, Rows3 } from "lucide-react";
-import { useTransition } from "react";
 
+import { useJobsNavigation } from "@/components/jobs/jobs-navigation";
 import { withParams } from "@/lib/search-params";
 import { cn } from "@/lib/utils";
 import {
@@ -15,19 +15,16 @@ import {
 
 /** "Sort by" dropdown plus the grid/list view toggle from the reference. */
 export function ResultsToolbar({ view }: { view: "list" | "grid" }) {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const { navigate, pending } = useJobsNavigation();
 
   const sort = (searchParams.get("sort") ?? DEFAULT_JOB_SORT) as JobSort;
 
   const push = (updates: Parameters<typeof withParams>[1], resetPage = true) => {
-    startTransition(() =>
-      router.push(`${pathname}${withParams(searchParams, updates, { resetPage })}`, {
-        scroll: false,
-      }),
-    );
+    navigate(`${pathname}${withParams(searchParams, updates, { resetPage })}`, {
+      scroll: false,
+    });
   };
 
   return (

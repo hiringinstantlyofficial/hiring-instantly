@@ -1,9 +1,13 @@
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { MapPin, Search } from "lucide-react";
 import { useState, type FormEvent } from "react";
 
+import {
+  PendingSpinner,
+  useJobsNavigation,
+} from "@/components/jobs/jobs-navigation";
 import { Button } from "@/components/ui/button";
 import { popularSearches } from "@/lib/site";
 import { withParams } from "@/lib/search-params";
@@ -40,7 +44,7 @@ export function JobSearchBar({
   idPrefix,
   showPopular = true,
 }: JobSearchBarProps) {
-  const router = useRouter();
+  const { navigate, pending } = useJobsNavigation();
   const searchParams = useSearchParams();
 
   const id = (name: string) => (idPrefix ? `${idPrefix}-${name}` : name);
@@ -50,7 +54,7 @@ export function JobSearchBar({
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    router.push(
+    navigate(
       `/jobs${withParams(searchParams, {
         q: keyword.trim() || null,
         location: location.trim() || null,
@@ -109,7 +113,8 @@ export function JobSearchBar({
           </datalist>
         </div>
 
-        <Button type="submit" size="md" className="sm:ml-2">
+        <Button type="submit" size="md" disabled={pending} className="sm:ml-2">
+          {pending ? <PendingSpinner className="size-5" /> : null}
           Search
         </Button>
       </form>

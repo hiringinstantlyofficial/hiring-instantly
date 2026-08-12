@@ -1,9 +1,10 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronUp, X } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 
+import { useJobsNavigation } from "@/components/jobs/jobs-navigation";
 import { hasActiveFilters, readList, toggleListValue, withParams } from "@/lib/search-params";
 import { cn } from "@/lib/utils";
 import {
@@ -158,16 +159,15 @@ function FilterGroup({
 
 /** Shared navigation for every facet control. */
 function useFacetNavigation() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const { navigate, pending } = useJobsNavigation();
 
   const apply = (updates: Parameters<typeof withParams>[1]) => {
     // Filters live in the URL so results stay server-rendered, shareable and
     // crawlable. `scroll: false` keeps the user's place in the list.
     const target = `${pathname === "/" ? "/jobs" : pathname}${withParams(searchParams, updates)}`;
-    startTransition(() => router.push(target, { scroll: false }));
+    navigate(target, { scroll: false });
   };
 
   return { apply, searchParams, pending };
@@ -232,10 +232,9 @@ function FacetRadio({ value, label }: { value: string; label: string }) {
 }
 
 export function ClearFiltersButton() {
-  const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [pending, startTransition] = useTransition();
+  const { navigate, pending } = useJobsNavigation();
 
   return (
     <button
@@ -256,11 +255,7 @@ export function ClearFiltersButton() {
           next.delete(key);
         }
         const query = next.toString();
-        startTransition(() =>
-          router.push(`${pathname}${query ? `?${query}` : ""}`, {
-            scroll: false,
-          }),
-        );
+        navigate(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
       }}
       className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"
     >

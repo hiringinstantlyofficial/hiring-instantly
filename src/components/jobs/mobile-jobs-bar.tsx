@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Search, SlidersHorizontal, X } from "lucide-react";
 
 import {
@@ -9,7 +9,11 @@ import {
   FilterGroups,
 } from "@/components/jobs/filter-sidebar";
 import { JobSearchBar } from "@/components/jobs/job-search-bar";
-import { hasActiveFilters } from "@/lib/search-params";
+import {
+  PendingSpinner,
+  useJobsNavigation,
+} from "@/components/jobs/jobs-navigation";
+import { hasActiveFilters, withParams } from "@/lib/search-params";
 import { cn } from "@/lib/utils";
 import type { FacetCounts } from "@/types/job";
 
@@ -78,9 +82,13 @@ export function MobileJobsPanel({ facets }: { facets: FacetCounts }) {
  *
  * The expanded panel above is tall — two fields and a button, stacked — so it is
  * not what should reappear halfway down a listing. This is its collapsed form: a
- * single row showing what is currently being searched, which opens the real form
- * on tap. It slides away on the way down and returns on the way up, so the
- * controls are always about one gesture away without ever holding the viewport.
+ * single row holding the keyword field itself and the filters toggle, so a new
+ * search is one tap and one Enter, with nothing unfolding underneath. It slides
+ * away on the way down and returns on the way up, so the controls are always
+ * about one gesture away without ever holding the viewport.
+ *
+ * Location stays with the full panel at the top of the page: it is the rarer
+ * edit, and any value already set survives a search from here untouched.
  *
  * Purely an overlay: it is `fixed`, reserves no space, and renders nothing at
  * all until the page has scrolled past the panel it stands in for — so there is
@@ -91,13 +99,14 @@ export function MobileJobsPanel({ facets }: { facets: FacetCounts }) {
 export function MobileJobsBar({ facets }: { facets: FacetCounts }) {
   const [isMobile, setIsMobile] = useState(false);
   const [visible, setVisible] = useState(false);
-  const [searchOpen, setSearchOpen] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   const lastScrollRef = useRef(0);
   // Read inside the scroll handler, which must not be rebuilt on every toggle.
-  const panelOpenRef = useRef(false);
-  panelOpenRef.current = searchOpen || filtersOpen;
+  // Typing counts as busy too: the on-screen keyboard scrolls the page by itself.
+  const busyRef = useRef(false);
+  const typingRef = useRef(false);
+  busyRef.current = filtersOpen;
 
   // Doubles as the mount flag: false through SSR, so this renders nothing until
   // the client confirms both that it is running and that the screen is small.
@@ -135,7 +144,7 @@ export function MobileJobsBar({ facets }: { facets: FacetCounts }) {
         }
 
         // Never pull the bar out from under someone typing or ticking a filter.
-        if (panelOpenRef.current) return;
+        if (busyRef.current || typingRef.current) return;
 
         setVisible(delta < 0);
       });
@@ -150,10 +159,7 @@ export function MobileJobsBar({ facets }: { facets: FacetCounts }) {
 
   // Collapse on the way out, so it never slides back in mid-expansion.
   useEffect(() => {
-    if (!visible) {
-      setSearchOpen(false);
-      setFiltersOpen(false);
-    }
+    if (!visible) setFiltersOpen(false);
   }, [visible]);
 
   if (!isMobile) return null;
@@ -169,39 +175,22 @@ export function MobileJobsBar({ facets }: { facets: FacetCounts }) {
       style={{ top: HEADER_HEIGHT }}
     >
       <div className="container-page flex items-center gap-3 py-3">
-        <SearchSummaryButton
-          open={searchOpen}
-          onToggle={() => {
-            setSearchOpen((value) => !value);
-            setFiltersOpen(false);
+        <StickySearchField
+          onTypingChange={(typing) => {
+            typingRef.current = typing;
           }}
         />
         <FilterToggle
           id="sticky-job-filters"
           compact
           open={filtersOpen}
-          onToggle={() => {
-            setFiltersOpen((value) => !value);
-            setSearchOpen(false);
-          }}
+          onToggle={() => setFiltersOpen((value) => !value)}
         />
       </div>
 
-      {/* Both panels open inside the bar and scroll internally, so they are
+      {/* The filter panel opens inside the bar and scrolls internally, so it is
           reachable from wherever the reader is without pushing the listing
           off the bottom of the screen. */}
-      {searchOpen ? (
-        <div className="border-t border-line-soft">
-          <div className="container-page py-4">
-            <JobSearchBar
-              variant="inline"
-              idPrefix="sticky"
-              showPopular={false}
-            />
-          </div>
-        </div>
-      ) : null}
-
       {filtersOpen ? (
         <div
           id="sticky-job-filters"
@@ -224,41 +213,63 @@ export function MobileJobsBar({ facets }: { facets: FacetCounts }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The collapsed bar's stand-in for the search form: says what is being searched
- * rather than just "Search", so a reader halfway down a filtered listing can see
+ * The collapsed bar's search field: the real input rather than a button that
+ * opens one, so the whole interaction is tap, type, Enter. It shows the keyword
+ * currently in the URL, so a reader halfway down a filtered listing can also see
  * what produced it without scrolling back up.
  */
-function SearchSummaryButton({
-  open,
-  onToggle,
+function StickySearchField({
+  onTypingChange,
 }: {
-  open: boolean;
-  onToggle: () => void;
+  onTypingChange: (typing: boolean) => void;
 }) {
+  const { navigate, pending } = useJobsNavigation();
   const searchParams = useSearchParams();
-  const keyword = searchParams.get("q")?.trim();
-  const location = searchParams.get("location")?.trim();
+  const applied = searchParams.get("q") ?? "";
 
-  const summary = keyword
-    ? location
-      ? `${keyword} · ${location}`
-      : keyword
-    : location
-      ? `Jobs in ${location}`
-      : "Search jobs";
+  const [keyword, setKeyword] = useState(applied);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Follow the URL when the keyword changes elsewhere — "Clear all", a popular
+  // search, the back button — without fighting whatever is being typed here.
+  useEffect(() => setKeyword(applied), [applied]);
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    // Dismisses the on-screen keyboard, so the results are visible on landing.
+    inputRef.current?.blur();
+    navigate(`/jobs${withParams(searchParams, { q: keyword.trim() || null })}`);
+  }
 
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-expanded={open}
-      className="flex min-w-0 flex-1 items-center gap-2.5 border border-line px-3.5 py-2.5 text-left text-sm text-navy-700"
+    <form
+      onSubmit={submit}
+      role="search"
+      aria-label="Search jobs"
+      className="flex min-w-0 flex-1 items-center gap-2.5 border border-line px-3.5 py-2"
     >
-      <Search className="size-4 shrink-0 text-navy-700" aria-hidden />
-      <span className={cn("truncate", !keyword && !location && "text-slate-400")}>
-        {summary}
-      </span>
-    </button>
+      {pending ? (
+        <PendingSpinner className="size-4 shrink-0 text-primary" />
+      ) : (
+        <Search className="size-4 shrink-0 text-navy-700" aria-hidden />
+      )}
+      <label htmlFor="sticky-job-keyword" className="sr-only">
+        Job title or keyword
+      </label>
+      <input
+        ref={inputRef}
+        id="sticky-job-keyword"
+        name="q"
+        type="search"
+        enterKeyHint="search"
+        value={keyword}
+        onChange={(event) => setKeyword(event.target.value)}
+        onFocus={() => onTypingChange(true)}
+        onBlur={() => onTypingChange(false)}
+        placeholder="Search jobs"
+        className="w-full min-w-0 border-0 bg-transparent py-0.5 text-sm text-navy-700 placeholder:text-slate-400 focus:outline-none"
+      />
+    </form>
   );
 }
 
