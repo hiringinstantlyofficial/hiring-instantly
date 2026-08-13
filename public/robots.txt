@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /admin
+
+# Allow access to ads.txt and app-ads.txt
+Allow: /ads.txt
+Allow: /app-ads.txt
