@@ -49,6 +49,7 @@ const KNOWN_KEYS = [
   "benefits",
   "application_url",
   "application_email",
+  "application_phone",
   "capacity",
   "applicants_count",
   "status",
@@ -284,6 +285,7 @@ export function parseJobImport(input: string): JobImportResult {
 
   set("application_url", asText(record.application_url));
   set("application_email", asText(record.application_email));
+  set("application_phone", asText(record.application_phone));
 
   set("posted_at", take("Posted on", asDateInput(record.posted_at)));
   set("valid_through", take("Apply before", asDateInput(record.valid_through)));

@@ -127,6 +127,7 @@ function validJob(overrides: Record<string, unknown> = {}) {
     benefits: "",
     application_url: "https://example.com/apply",
     application_email: "",
+    application_phone: "",
     capacity: "",
     applicants_count: 0,
     status: "draft",
@@ -210,7 +211,11 @@ describe("jobFormSchema — transforms", () => {
 describe("jobFormSchema — invariants", () => {
   it("requires an application route", () => {
     const result = jobFormSchema.safeParse(
-      validJob({ application_url: "", application_email: "" }),
+      validJob({
+        application_url: "",
+        application_email: "",
+        application_phone: "",
+      }),
     );
     expect(result.success).toBe(false);
   });
@@ -218,6 +223,45 @@ describe("jobFormSchema — invariants", () => {
   it("accepts an email-only application route", () => {
     const result = jobFormSchema.safeParse(
       validJob({ application_url: "", application_email: "jobs@acme.com" }),
+    );
+    expect(result.success).toBe(true);
+  });
+
+  // Walk-in and field roles often publish a number and nothing else, so a phone
+  // on its own has to be a complete listing.
+  it("accepts a phone-only application route", () => {
+    const result = jobFormSchema.safeParse(
+      validJob({ application_url: "", application_phone: "+91 98765 43210" }),
+    );
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.application_phone).toBe("+91 98765 43210");
+    }
+  });
+
+  it("maps an empty phone to null rather than an empty string", () => {
+    const result = jobFormSchema.safeParse(validJob());
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.application_phone).toBeNull();
+  });
+
+  it("rejects a phone number that carries no plausible digits", () => {
+    const result = jobFormSchema.safeParse(
+      validJob({ application_phone: "call us" }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects a phone number that is too short to dial", () => {
+    const result = jobFormSchema.safeParse(
+      validJob({ application_phone: "12345" }),
+    );
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a landline with an extension", () => {
+    const result = jobFormSchema.safeParse(
+      validJob({ application_phone: "080-4567-8900 ext 12" }),
     );
     expect(result.success).toBe(true);
   });

@@ -135,6 +135,7 @@ export type Job = {
 
   application_url: string | null;
   application_email: string | null;
+  application_phone: string | null;
 
   capacity: number | null;
   applicants_count: number;

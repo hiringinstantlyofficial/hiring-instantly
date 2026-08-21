@@ -53,6 +53,7 @@ invent a listing from the URL alone.
   "benefits": ["one bullet per array item"],
   "application_url": "full https:// URL or null",
   "application_email": "valid email or null",
+  "application_phone": "contact number as printed, or null",
   "capacity": 1,
   "applicants_count": 0,
   "status": "draft",
@@ -180,9 +181,11 @@ specific; "you'll drive impactful outcomes" is neither.
 - **Salary:** whole annual rupees, e.g. `600000`, not `"6 LPA"`. Convert monthly to
   annual (×12) and lakhs to rupees (×100000). `salary_max` must be `>= salary_min`.
   If the page shows a single figure, use it for both. If none, both `null`.
-- **`application_url` or `application_email` is mandatory** — at least one must be
-  non-null or the form rejects the submission. Default `application_url` to `<JOB_URL>`
-  when the page gives no dedicated apply link.
+- **An apply route is mandatory** — at least one of `application_url`,
+  `application_email` or `application_phone` must be non-null or the form rejects the
+  submission. Default `application_url` to `<JOB_URL>` when the page gives no dedicated
+  apply link. Only fill `application_phone` from a number the page actually prints for
+  applicants; never guess one from a switchboard or support line.
 - **Bullets:** no leading `-`, `•`, or `*`, no trailing periods on short fragments, one
   idea per item, start with a strong verb for responsibilities.
 - **`skills`:** 6-12 concrete, named technologies or competencies. No soft skills like
@@ -213,7 +216,8 @@ Verify all of the following, and silently fix anything that fails:
    has no reason to exist; go back and add the missing judgement.
 9. **Nothing generic is stated as an employer-specific fact.** Advice about the role and
    market reads as advice; only what the page published is stated as this company's.
-10. At least one of `application_url` / `application_email` is non-null.
+10. At least one of `application_url` / `application_email` / `application_phone` is
+    non-null.
 11. All URLs start with `http://` or `https://`.
 12. Output is valid JSON and nothing else.
 

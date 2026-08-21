@@ -27,6 +27,10 @@ export default function robots(): MetadataRoute.Robots {
           "/jobs?*view=",
         ],
       },
+      {
+        userAgent: "Mediapartners-Google",
+        allow: "/",
+      },
     ],
     sitemap: absoluteUrl("/sitemap.xml"),
   };

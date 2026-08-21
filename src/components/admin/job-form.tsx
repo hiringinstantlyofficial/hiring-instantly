@@ -54,6 +54,7 @@ function defaultsFrom(job?: Job): JobFormValues {
     benefits: job?.benefits.join("\n") ?? "",
     application_url: job?.application_url ?? "",
     application_email: job?.application_email ?? "",
+    application_phone: job?.application_phone ?? "",
     capacity: job?.capacity ?? "",
     applicants_count: job?.applicants_count ?? 0,
     status: job?.status ?? "draft",
@@ -142,6 +143,7 @@ export function JobForm({ job }: { job?: Job }) {
       benefits: values.benefits,
       application_url: values.application_url,
       application_email: values.application_email,
+      application_phone: values.application_phone,
       capacity: values.capacity,
       applicants_count: values.applicants_count ?? 0,
       status: values.status,
@@ -472,6 +474,19 @@ export function JobForm({ job }: { job?: Job }) {
             {...register("application_email")}
             className={inputClass}
             placeholder="jobs@company.com"
+          />
+        </Field>
+
+        <Field
+          label="Application phone"
+          error={errorFor("application_phone")}
+          hint="Used only when no URL or email is given."
+        >
+          <input
+            {...register("application_phone")}
+            type="tel"
+            className={inputClass}
+            placeholder="+91 98765 43210"
           />
         </Field>
       </Fieldset>

@@ -377,7 +377,9 @@ export function JobPostingJsonLd({
             }
           : {}),
         ...(job.skills.length ? { skills: job.skills.join(", ") } : {}),
-        directApply: Boolean(job.application_url ?? job.application_email),
+        directApply: Boolean(
+          job.application_url ?? job.application_email ?? job.application_phone,
+        ),
         identifier: {
           "@type": "PropertyValue",
           name: siteConfig.name,

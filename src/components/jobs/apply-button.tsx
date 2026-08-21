@@ -1,4 +1,4 @@
-import { ArrowUpRight, Mail } from "lucide-react";
+import { ArrowUpRight, Mail, Phone } from "lucide-react";
 
 import { ButtonAnchor } from "@/components/ui/button";
 import { siteConfig } from "@/lib/site";
@@ -6,8 +6,9 @@ import { absoluteUrl } from "@/lib/site";
 import type { Job } from "@/types/job";
 
 /**
- * Applications happen off-site: either the employer's ATS link or a mailto with
- * the subject prefilled. `application_url` wins when both are present.
+ * Applications happen off-site: the employer's ATS link, a mailto with the
+ * subject prefilled, or a tel: to the number they gave. The routes are tried in
+ * that order, so whichever is set highest wins when more than one is present.
  */
 export function ApplyButton({
   job,
@@ -51,6 +52,23 @@ export function ApplyButton({
       >
         <Mail className="size-5" aria-hidden />
         Apply by Email
+      </ButtonAnchor>
+    );
+  }
+
+  if (job.application_phone) {
+    // tel: only tolerates digits and a leading +, so the display spacing and
+    // brackets are stripped from the href while the label keeps them readable.
+    const dialable = job.application_phone.replace(/[^\d+]/g, "");
+
+    return (
+      <ButtonAnchor
+        href={`tel:${dialable}`}
+        size={size}
+        fullWidth={fullWidth}
+      >
+        <Phone className="size-5" aria-hidden />
+        Call {job.application_phone}
       </ButtonAnchor>
     );
   }

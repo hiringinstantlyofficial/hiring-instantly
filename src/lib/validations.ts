@@ -111,6 +111,27 @@ const optionalEmail = z
     "Enter a valid email address",
   );
 
+/**
+ * A contact number, kept deliberately loose: listings carry anything from
+ * `+91 98765 43210` to `080-4567-8900 ext 12`, and a stricter pattern would
+ * reject real numbers an admin copied straight off the employer's site. The
+ * check only rules out strings with no plausible number in them at all.
+ */
+const optionalPhone = z
+  .string()
+  .trim()
+  .max(40)
+  .optional()
+  .or(z.literal(""))
+  .transform((value) => (value ? value : null))
+  .refine(
+    (value) =>
+      value === null ||
+      (/^[+\d][\d\s().+-]*(?:\s?(?:ext|x)\.?\s?\d+)?$/i.test(value) &&
+        (value.match(/\d/g)?.length ?? 0) >= 7),
+    "Enter a valid phone number, e.g. +91 98765 43210",
+  );
+
 const optionalNumber = z
   .union([z.string(), z.number()])
   .optional()
@@ -196,6 +217,7 @@ export const jobFormSchema = z
 
     application_url: optionalUrl,
     application_email: optionalEmail,
+    application_phone: optionalPhone,
 
     capacity: optionalNumber,
     applicants_count: optionalNumber,
@@ -206,9 +228,12 @@ export const jobFormSchema = z
     valid_through: optionalDate,
   })
   .refine(
-    (data) => Boolean(data.application_url ?? data.application_email),
+    (data) =>
+      Boolean(
+        data.application_url ?? data.application_email ?? data.application_phone,
+      ),
     {
-      message: "Add an application URL or an application email",
+      message: "Add an application URL, email or phone number",
       path: ["application_url"],
     },
   )
