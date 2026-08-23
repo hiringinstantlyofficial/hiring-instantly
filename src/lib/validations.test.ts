@@ -5,8 +5,11 @@ import {
   articleFormSchema,
   companyFormSchema,
   contactSchema,
+  indianPhone,
   jobFormSchema,
   loginSchema,
+  recruiterJobFormSchema,
+  reviewActionSchema,
 } from "@/lib/validations";
 
 /** A minimal article payload that passes every required field. */
@@ -424,5 +427,131 @@ describe("jobFormSchema — company reference", () => {
       expect("company_description" in result.data).toBe(false);
       expect("company_logo_url" in result.data).toBe(false);
     }
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/*  Employer portal                                                           */
+/* -------------------------------------------------------------------------- */
+
+/** The recruiter form's field set: validJob minus everything editorial. */
+function validRecruiterJob(overrides: Record<string, unknown> = {}) {
+  const base: Record<string, unknown> = validJob();
+  delete base.slug;
+  delete base.status;
+  delete base.is_featured;
+  delete base.capacity;
+  delete base.applicants_count;
+  delete base.posted_at;
+  delete base.valid_through;
+  return { ...base, ...overrides };
+}
+
+describe("indianPhone", () => {
+  it("prepends +91 to a bare 10-digit mobile", () => {
+    const result = indianPhone.safeParse("98765 43210");
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toBe("+919876543210");
+  });
+
+  it("accepts an already-+91 string unchanged", () => {
+    const result = indianPhone.safeParse("+91 98765-43210");
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toBe("+919876543210");
+  });
+
+  it("accepts the common written variants and normalises them all", () => {
+    // 0-prefixed, as people copy it off their own phone.
+    const zeroPrefixed = indianPhone.safeParse("098765 43210");
+    expect(zeroPrefixed.success).toBe(true);
+    if (zeroPrefixed.success) expect(zeroPrefixed.data).toBe("+919876543210");
+
+    // 91 without the plus.
+    const bare91 = indianPhone.safeParse("91 98765 43210");
+    expect(bare91.success).toBe(true);
+    if (bare91.success) expect(bare91.data).toBe("+919876543210");
+  });
+
+  it("rejects a 10-digit number starting with 5 — not an Indian mobile", () => {
+    expect(indianPhone.safeParse("5876543210").success).toBe(false);
+    // The same rule holds behind a +91 prefix.
+    expect(indianPhone.safeParse("+91 58765 43210").success).toBe(false);
+  });
+
+  it("rejects foreign numbers — the field is Indian mobiles only", () => {
+    expect(indianPhone.safeParse("+1 415 555 2671").success).toBe(false);
+    expect(indianPhone.safeParse("+44 20 7946 0958").success).toBe(false);
+  });
+
+  it("rejects strings with no plausible number at all", () => {
+    expect(indianPhone.safeParse("call me").success).toBe(false);
+    expect(indianPhone.safeParse("").success).toBe(false);
+  });
+});
+
+describe("recruiterJobFormSchema", () => {
+  it("accepts the recruiter field set", () => {
+    expect(recruiterJobFormSchema.safeParse(validRecruiterJob()).success).toBe(
+      true,
+    );
+  });
+
+  it("rejects a smuggled status field — the schema is strict", () => {
+    expect(
+      recruiterJobFormSchema.safeParse(
+        validRecruiterJob({ status: "active" }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("rejects a smuggled is_featured field", () => {
+    expect(
+      recruiterJobFormSchema.safeParse(
+        validRecruiterJob({ is_featured: true }),
+      ).success,
+    ).toBe(false);
+  });
+
+  it("still enforces the shared apply-route rule", () => {
+    expect(
+      recruiterJobFormSchema.safeParse(
+        validRecruiterJob({
+          application_url: "",
+          application_email: "",
+          application_phone: "",
+        }),
+      ).success,
+    ).toBe(false);
+  });
+});
+
+describe("reviewActionSchema", () => {
+  const jobId = "3f1c2b7e-9a44-4c1d-8f2e-6b0d5a1c7e93";
+
+  it("requires a note when requesting changes", () => {
+    expect(
+      reviewActionSchema.safeParse({
+        job_id: jobId,
+        action: "changes-requested",
+        review_note: "",
+      }).success,
+    ).toBe(false);
+
+    expect(
+      reviewActionSchema.safeParse({
+        job_id: jobId,
+        action: "changes-requested",
+        review_note: "Salary range missing.",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("approves without a note", () => {
+    const result = reviewActionSchema.safeParse({
+      job_id: jobId,
+      action: "approve",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.review_note).toBeNull();
   });
 });

@@ -79,6 +79,7 @@ export interface AdminStats {
   total: number;
   active: number;
   draft: number;
+  pending: number;
   postedThisWeek: number;
 }
 
@@ -91,8 +92,8 @@ export function useAdminStats() {
         Date.now() - 7 * 24 * 60 * 60 * 1000,
       ).toISOString();
 
-      // Four HEAD counts in parallel — no rows transferred.
-      const [total, active, draft, thisWeek] = await Promise.all([
+      // Five HEAD counts in parallel — no rows transferred.
+      const [total, active, draft, pending, thisWeek] = await Promise.all([
         supabase.from("jobs").select("id", { count: "exact", head: true }),
         supabase
           .from("jobs")
@@ -105,17 +106,26 @@ export function useAdminStats() {
         supabase
           .from("jobs")
           .select("id", { count: "exact", head: true })
+          .eq("status", "pending"),
+        supabase
+          .from("jobs")
+          .select("id", { count: "exact", head: true })
           .gte("posted_at", weekAgo),
       ]);
 
       const firstError =
-        total.error ?? active.error ?? draft.error ?? thisWeek.error;
+        total.error ??
+        active.error ??
+        draft.error ??
+        pending.error ??
+        thisWeek.error;
       if (firstError) throw new Error(firstError.message);
 
       return {
         total: total.count ?? 0,
         active: active.count ?? 0,
         draft: draft.count ?? 0,
+        pending: pending.count ?? 0,
         postedThisWeek: thisWeek.count ?? 0,
       };
     },

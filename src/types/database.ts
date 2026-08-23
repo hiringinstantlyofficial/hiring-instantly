@@ -13,9 +13,20 @@ import type {
   Job,
   JobCategory,
   JobLevel,
+  JobSource,
   JobStatus,
   JobType,
 } from "@/types/job";
+import type {
+  ApprovedVia,
+  CompanyMember,
+  MembershipRole,
+  MembershipStatus,
+  Recruiter,
+  RecruiterStatus,
+  TrustLevel,
+} from "@/types/recruiter";
+import type { JobReviewEvent, ReviewAction } from "@/types/review";
 
 /**
  * Hand-written schema types for the Supabase client. Mirrors
@@ -65,6 +76,12 @@ type JobInsert = {
   is_featured?: boolean;
   posted_at?: string;
   valid_through?: string | null;
+  submitted_by?: string | null;
+  source?: JobSource;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+  review_note?: string | null;
+  approved_snapshot?: Record<string, unknown> | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -86,8 +103,47 @@ type CompanyInsert = {
   linkedin_url?: string | null;
   is_verified?: boolean;
   status?: CompanyStatus;
+  created_by?: string | null;
+  // Derived from `website` by a trigger; never written by the app.
+  email_domain?: string | null;
   created_at?: string;
   updated_at?: string;
+};
+
+type RecruiterInsert = {
+  user_id: string;
+  full_name: string;
+  // Pinned to the auth email by a trigger; accepted here so the insert can
+  // satisfy the NOT NULL without a second round trip.
+  work_email: string;
+  phone: string;
+  designation?: string | null;
+  linkedin_url?: string | null;
+  status?: RecruiterStatus;
+  trust_level?: TrustLevel;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type CompanyMemberInsert = {
+  id?: string;
+  company_id: string;
+  recruiter_id: string;
+  role?: MembershipRole;
+  status?: MembershipStatus;
+  approved_via?: ApprovedVia | null;
+  approved_by?: string | null;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type JobReviewEventInsert = {
+  id?: string;
+  job_id: string;
+  actor_id?: string | null;
+  action: ReviewAction;
+  note?: string | null;
+  created_at?: string;
 };
 
 type ArticleInsert = {
@@ -171,6 +227,16 @@ export type Database = {
             referencedRelation: "companies";
             referencedColumns: ["id"];
           },
+          // The review queue embeds the submitting recruiter alongside the job
+          // (`recruiter:recruiters(...)`); without this entry that embed types
+          // as `never`.
+          {
+            foreignKeyName: "jobs_submitted_by_fkey";
+            columns: ["submitted_by"];
+            isOneToOne: false;
+            referencedRelation: "recruiters";
+            referencedColumns: ["user_id"];
+          },
         ];
       };
       companies: {
@@ -178,6 +244,49 @@ export type Database = {
         Insert: CompanyInsert;
         Update: Partial<CompanyInsert>;
         Relationships: [];
+      };
+      recruiters: {
+        Row: Recruiter;
+        Insert: RecruiterInsert;
+        Update: Partial<RecruiterInsert>;
+        Relationships: [];
+      };
+      company_members: {
+        Row: CompanyMember;
+        Insert: CompanyMemberInsert;
+        Update: Partial<CompanyMemberInsert>;
+        // Both ends are embedded by the membership queue and the recruiter's
+        // company card.
+        Relationships: [
+          {
+            foreignKeyName: "company_members_company_id_fkey";
+            columns: ["company_id"];
+            isOneToOne: false;
+            referencedRelation: "companies";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "company_members_recruiter_id_fkey";
+            columns: ["recruiter_id"];
+            isOneToOne: false;
+            referencedRelation: "recruiters";
+            referencedColumns: ["user_id"];
+          },
+        ];
+      };
+      job_review_events: {
+        Row: JobReviewEvent;
+        Insert: JobReviewEventInsert;
+        Update: Partial<JobReviewEventInsert>;
+        Relationships: [
+          {
+            foreignKeyName: "job_review_events_job_id_fkey";
+            columns: ["job_id"];
+            isOneToOne: false;
+            referencedRelation: "jobs";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       articles: {
         Row: Article;
@@ -211,6 +320,18 @@ export type Database = {
     Functions: {
       is_admin: {
         Args: Record<string, never>;
+        Returns: boolean;
+      };
+      is_recruiter: {
+        Args: Record<string, never>;
+        Returns: boolean;
+      };
+      can_manage_company: {
+        Args: { p_company_id: string };
+        Returns: boolean;
+      };
+      can_post_for_company: {
+        Args: { p_company_id: string };
         Returns: boolean;
       };
     };

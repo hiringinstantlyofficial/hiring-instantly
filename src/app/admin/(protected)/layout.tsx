@@ -3,22 +3,31 @@ import { redirect } from "next/navigation";
 import {
   Briefcase,
   Building2,
+  ClipboardCheck,
   Inbox,
   LayoutDashboard,
   LogOut,
   Newspaper,
   Plus,
+  Users,
 } from "lucide-react";
 
 import { signOut } from "@/app/actions/admin";
+import { ReviewBadge } from "@/components/admin/review-badge";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Logo } from "@/components/ui/logo";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+// Review sits above Jobs on purpose: it is the one entry with a
+// service-level expectation attached ("reviewed within one working day"),
+// so it belongs first in the eye line. Its badge is the admin's whole
+// notification system for recruiter submissions.
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/review", label: "Review", icon: ClipboardCheck, badge: true },
   { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
   { href: "/admin/companies", label: "Companies", icon: Building2 },
+  { href: "/admin/recruiters", label: "Recruiters", icon: Users },
   { href: "/admin/blog", label: "Blog", icon: Newspaper },
   { href: "/admin/messages", label: "Messages", icon: Inbox },
 ] as const;
@@ -95,6 +104,7 @@ export default async function ProtectedAdminLayout({
               >
                 <item.icon className="size-5" aria-hidden />
                 {item.label}
+                {"badge" in item && item.badge ? <ReviewBadge /> : null}
               </Link>
             ))}
             <Link

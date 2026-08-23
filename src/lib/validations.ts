@@ -164,11 +164,36 @@ const optionalDate = z
   .transform((value) => (value ? istDateInputToISO(value) : null));
 
 /**
- * The admin job form. Coerces the textarea/CSV inputs into the array columns
- * the database expects, and enforces the same invariants as the SQL CHECKs so
- * the user sees a field error instead of a Postgres error.
+ * Shared refinement predicates, applied to both the admin and the recruiter
+ * job schemas. Declared once so the two cannot drift on what "valid" means.
  */
-export const jobFormSchema = z
+const hasApplyRoute = (data: {
+  application_url: string | null;
+  application_email: string | null;
+  application_phone: string | null;
+}) =>
+  Boolean(
+    data.application_url ?? data.application_email ?? data.application_phone,
+  );
+
+const salaryOrdered = (data: {
+  salary_min: number | null;
+  salary_max: number | null;
+}) =>
+  data.salary_min === null ||
+  data.salary_max === null ||
+  data.salary_max >= data.salary_min;
+
+/**
+ * Every job field, shared by the admin form and the recruiter form. Coerces
+ * the textarea/CSV inputs into the array columns the database expects, and
+ * enforces the same invariants as the SQL CHECKs so the user sees a field
+ * error instead of a Postgres error.
+ *
+ * The recruiter schema below is *derived* from this via `.omit()`, so a field
+ * added here cannot be forgotten on one side.
+ */
+const jobFormBaseSchema = z
   .object({
     title: z.string().trim().min(3, "Title is required").max(200),
     slug: z
@@ -226,24 +251,18 @@ export const jobFormSchema = z
     is_featured: z.coerce.boolean().default(false),
     posted_at: optionalDate,
     valid_through: optionalDate,
+  });
+
+/** The admin job form: every field, including the editorial ones. */
+export const jobFormSchema = jobFormBaseSchema
+  .refine(hasApplyRoute, {
+    message: "Add an application URL, email or phone number",
+    path: ["application_url"],
   })
-  .refine(
-    (data) =>
-      Boolean(
-        data.application_url ?? data.application_email ?? data.application_phone,
-      ),
-    {
-      message: "Add an application URL, email or phone number",
-      path: ["application_url"],
-    },
-  )
-  .refine(
-    (data) =>
-      data.salary_min === null ||
-      data.salary_max === null ||
-      data.salary_max >= data.salary_min,
-    { message: "Maximum salary must be at least the minimum", path: ["salary_max"] },
-  )
+  .refine(salaryOrdered, {
+    message: "Maximum salary must be at least the minimum",
+    path: ["salary_max"],
+  })
   .refine(
     (data) =>
       data.capacity === null ||
@@ -254,6 +273,36 @@ export const jobFormSchema = z
 
 export type JobFormValues = z.input<typeof jobFormSchema>;
 export type JobFormOutput = z.output<typeof jobFormSchema>;
+
+/**
+ * The recruiter job form: the same fields minus everything editorial. Derived
+ * with `.omit()` rather than copied, and `.strict()` so a payload smuggling a
+ * `status` or `is_featured` field is rejected outright — the database trigger
+ * would pin those anyway, but a validation error is a clearer answer than a
+ * silently ignored field.
+ */
+export const recruiterJobFormSchema = jobFormBaseSchema
+  .omit({
+    slug: true,
+    status: true,
+    is_featured: true,
+    capacity: true,
+    applicants_count: true,
+    posted_at: true,
+    valid_through: true,
+  })
+  .strict()
+  .refine(hasApplyRoute, {
+    message: "Add an application URL, email or phone number",
+    path: ["application_url"],
+  })
+  .refine(salaryOrdered, {
+    message: "Maximum salary must be at least the minimum",
+    path: ["salary_max"],
+  });
+
+export type RecruiterJobFormValues = z.input<typeof recruiterJobFormSchema>;
+export type RecruiterJobFormOutput = z.output<typeof recruiterJobFormSchema>;
 
 /**
  * The admin company form — the single place a company's identity is written.
@@ -383,3 +432,112 @@ export const loginSchema = z.object({
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;
+
+/* -------------------------------------------------------------------------- */
+/*  Employer portal                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A mandatory Indian mobile number, normalised to canonical `+91XXXXXXXXXX`.
+ *
+ * Indian-only by requirement: recruiter signup demands a number the admin can
+ * actually ring from India — it is the escape hatch for a suspicious
+ * submission, so it has to be dialable. Accepts the common ways people write
+ * one (bare 10 digits, 0-prefixed, 91- or +91-prefixed, with any spacing or
+ * punctuation) and rejects everything else, including foreign E.164 numbers.
+ * An Indian mobile always starts 6–9. Stricter than the listings'
+ * `optionalPhone` on purpose, and mirrored by the
+ * `recruiters_phone_india_check` constraint in the recruiter-portal migration.
+ */
+export const indianPhone = z
+  .string()
+  .trim()
+  .min(1, "Enter a phone number")
+  .max(24, "That number is too long")
+  .transform((value) => value.replace(/[\s().-]/g, ""))
+  .transform((value) => {
+    const digits = value.replace(/^\+/, "");
+    if (/^[6-9]\d{9}$/.test(digits)) return `+91${digits}`;
+    if (/^0[6-9]\d{9}$/.test(digits)) return `+91${digits.slice(1)}`;
+    if (/^91[6-9]\d{9}$/.test(digits)) return `+${digits}`;
+    return value;
+  })
+  .refine(
+    (value) => /^\+91[6-9]\d{9}$/.test(value),
+    "Enter a valid Indian mobile number, e.g. 98765 43210",
+  );
+
+/** The recruiter onboarding form. The work email comes from the session. */
+export const recruiterProfileSchema = z.object({
+  full_name: z
+    .string()
+    .trim()
+    .min(2, "Please enter your name")
+    .max(120, "That name is too long"),
+  phone: indianPhone,
+  designation: optionalText(120),
+  linkedin_url: optionalUrl,
+});
+
+export type RecruiterProfileValues = z.input<typeof recruiterProfileSchema>;
+export type RecruiterProfileOutput = z.output<typeof recruiterProfileSchema>;
+
+/** The magic-link request on /employers/login and /post-a-job. */
+export const magicLinkSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .min(1, "Enter your work email")
+    .email("Enter a valid email address")
+    .max(200),
+  /** Honeypot: real users never see or fill this. */
+  website: z.string().max(0, "Spam detected").optional().or(z.literal("")),
+});
+
+/** Requesting to act for an existing company (D4). */
+export const companyClaimSchema = z.object({
+  company_id: z.string().uuid(),
+});
+
+/**
+ * The company identity step of the recruiter wizard — derived from the admin
+ * schema minus the editorial fields, same reasoning as the job schema. Logo
+ * and cover are absent because step 2 uploads them against the real company id
+ * after this step's insert (D5).
+ */
+export const recruiterCompanySchema = companyFormSchema
+  .omit({
+    slug: true,
+    legal_name: true,
+    logo_url: true,
+    cover_url: true,
+    is_verified: true,
+    status: true,
+  })
+  .strict();
+
+export type RecruiterCompanyValues = z.input<typeof recruiterCompanySchema>;
+export type RecruiterCompanyOutput = z.output<typeof recruiterCompanySchema>;
+
+/** One admin action on a submission. The note is required to bounce one. */
+export const reviewActionSchema = z
+  .object({
+    job_id: z.string().uuid(),
+    action: z.enum(["approve", "changes-requested", "reject"]),
+    review_note: z
+      .string()
+      .trim()
+      .max(2000, "Keep the note under 2000 characters")
+      .optional()
+      .or(z.literal(""))
+      .transform((value) => (value ? value : null)),
+  })
+  .refine(
+    (data) => data.action !== "changes-requested" || data.review_note !== null,
+    {
+      message: "Tell the recruiter what needs to change",
+      path: ["review_note"],
+    },
+  );
+
+export type ReviewActionInput = z.output<typeof reviewActionSchema>;

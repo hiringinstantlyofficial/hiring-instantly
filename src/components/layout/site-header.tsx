@@ -65,7 +65,7 @@ export function SiteHeader() {
           </Link>
           <span aria-hidden className="h-8 w-px bg-line" />
           <Link
-            href="/contact?intent=post-a-job"
+            href="/post-a-job"
             prefetch={true}
             className="bg-primary px-6 py-3 text-base font-semibold text-white transition-colors hover:bg-primary-hover"
           >
@@ -115,7 +115,7 @@ export function SiteHeader() {
               Contact
             </Link>
             <Link
-              href="/contact?intent=post-a-job"
+              href="/post-a-job"
               prefetch={true}
               className="my-4 bg-primary px-6 py-3 text-center text-base font-semibold text-white"
             >

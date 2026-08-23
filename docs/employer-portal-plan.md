@@ -68,7 +68,7 @@ different route, no change.
 > **Prerequisite, easy to miss.** Supabase's built-in SMTP sends ~2–3 emails per
 > hour and **only to addresses on the project team**. Magic links will appear to
 > work in testing and silently fail for real recruiters. A custom SMTP provider
-> (Resend, §8) must be configured under *Authentication → Emails → SMTP
+> (ZeptoMail, §8) must be configured under *Authentication → Emails → SMTP
 > Settings* before this ships, and the callback URL added to *Authentication →
 > URL Configuration → Redirect URLs*.
 
@@ -289,9 +289,12 @@ guarantee of spam calls and the fastest way to lose employer trust. It is stored
 on `recruiters`, read only through the admin-gated policy, and deliberately
 absent from every public type.
 
-Validation: E.164-ish, with a permissive Indian default (`+91` prepended to a
-bare 10-digit number starting 6–9), matching the INR-denominated salary bands
-already in [job.ts](src/types/job.ts#L82).
+Validation: **Indian mobiles only, and mandatory.** Every common written form
+(bare 10 digits, `0`-prefixed, `91`/`+91`-prefixed, any spacing) normalises to
+canonical `+91XXXXXXXXXX`; anything else — including a valid foreign E.164
+number — is rejected. A matching `CHECK` constraint on `recruiters.phone`
+backstops the validator at the database. Matches the INR-denominated salary
+bands already in [job.ts](src/types/job.ts#L82).
 
 ---
 
@@ -766,13 +769,13 @@ Email is what holds the two sides together across the review gap. Six messages:
 | Changes requested | HR | The `review_note` verbatim + a deep link to the edit page |
 | Membership approved | HR | "You can now edit Acme Robotics' profile" |
 
-**`src/lib/email.ts` *(new)*** — a thin Resend wrapper. There is no email
+**`src/lib/email.ts` *(new)*** — a thin ZeptoMail (Zoho) wrapper. There is no email
 infrastructure in this codebase today, so this is the one genuinely new external
 dependency.
 
 Two properties it must have:
 
-- **A missing `RESEND_API_KEY` logs a warning and returns, never throws.** Local
+- **A missing `ZEPTOMAIL_TOKEN` logs a warning and returns, never throws.** Local
   dev and preview deploys must not require mail, and an email failure must never
   roll back the submission it was announcing. Every call site treats delivery as
   best-effort, the same way [image-uploader.tsx](src/components/admin/image-uploader.tsx)
@@ -920,7 +923,7 @@ Six shippable phases. Each leaves the site working.
 | **2 — Auth** | `/employers/login`, `/auth/callback`, middleware, onboarding, the protected layout. A recruiter can sign in and see an empty dashboard. | `NEXT_PUBLIC_EMPLOYER_PORTAL` |
 | **3 — Submit** | Field-group extraction, company wizard, job form, submission actions. Recruiters can submit; admins approve from `/admin/jobs` with the existing table. | same flag |
 | **4 — Review** | `/admin/review`, trust chips, diff view, `/admin/recruiters`, nav badge. | same flag |
-| **5 — Email** | `lib/email.ts`, the six templates, Supabase custom SMTP. | `RESEND_API_KEY` |
+| **5 — Email** | `lib/email.ts`, the six templates, Supabase custom SMTP. | `ZEPTOMAIL_TOKEN` |
 | **6 — Launch** | `/post-a-job`, header CTA switch, sitemap, robots. Flag removed. | — |
 
 **Order notes.** Phase 1's migration is additive and reversible — nothing is

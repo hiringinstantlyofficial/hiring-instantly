@@ -3,12 +3,17 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useForm, type FieldError } from "react-hook-form";
+import {
+  useForm,
+  type FieldError,
+  type UseFormRegister,
+} from "react-hook-form";
 import { TriangleAlert } from "lucide-react";
 
 import { revalidateJobPaths } from "@/app/actions/admin";
 import { CompanyPicker } from "@/components/admin/company-picker";
 import { Field, Fieldset, inputClass } from "@/components/admin/form-fields";
+import { JobFields } from "@/components/admin/job-fields";
 import { Button } from "@/components/ui/button";
 import { useCompanyOptions } from "@/hooks/use-admin-companies";
 import { parseJobImport, type CompanyImportHint } from "@/lib/job-import";
@@ -19,18 +24,9 @@ import {
   jobFormSchema,
   type JobFormOutput,
   type JobFormValues,
+  type RecruiterJobFormValues,
 } from "@/lib/validations";
-import {
-  EXPERIENCE_LEVELS,
-  EXPERIENCE_LEVEL_LABELS,
-  JOB_CATEGORIES,
-  JOB_LEVELS,
-  JOB_LEVEL_LABELS,
-  JOB_STATUSES,
-  JOB_TYPES,
-  JOB_TYPE_LABELS,
-  type Job,
-} from "@/types/job";
+import { JOB_STATUSES, type Job } from "@/types/job";
 
 function defaultsFrom(job?: Job): JobFormValues {
   return {
@@ -249,247 +245,44 @@ export function JobForm({ job }: { job?: Job }) {
         </div>
       ) : null}
 
-      <Fieldset legend="The role">
-        <Field label="Job title" required error={errorFor("title")}>
-          <input
-            {...register("title")}
-            className={inputClass}
-            placeholder="Backend Engineer"
+      {/* Every shared field group lives in JobFields (also used by the
+          recruiter submission form); this shell contributes the admin-only
+          pieces — the slug, the searchable company picker and Publishing. */}
+      <JobFields
+        mode="admin"
+        // JobFields is typed against the shared recruiter subset; the admin
+        // form's values are a strict superset, but react-hook-form's generics
+        // aren't covariant, so the relationship is asserted here.
+        register={register as unknown as UseFormRegister<RecruiterJobFormValues>}
+        errorFor={errorFor}
+        slugSlot={
+          <Field
+            label="Slug"
+            error={errorFor("slug")}
+            hint={
+              isEdit
+                ? "Changing this breaks the existing public URL and any links to it."
+                : `Public URL: /jobs/${slug || "your-job-title"}`
+            }
+          >
+            <input {...register("slug")} className={inputClass} />
+          </Field>
+        }
+        companySlot={
+          <CompanyPicker
+            value={companyId ?? ""}
+            onChange={(id) =>
+              setValue("company_id", id, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+            error={errorFor("company_id")}
+            createPrefill={companyPrefill}
+            onCreateHandled={() => setCompanyPrefill(null)}
           />
-        </Field>
-
-        <Field
-          label="Slug"
-          error={errorFor("slug")}
-          hint={
-            isEdit
-              ? "Changing this breaks the existing public URL and any links to it."
-              : `Public URL: /jobs/${slug || "your-job-title"}`
-          }
-        >
-          <input {...register("slug")} className={inputClass} />
-        </Field>
-
-        <Field label="Location" required error={errorFor("location")}>
-          <input
-            {...register("location")}
-            className={inputClass}
-            placeholder="Bengaluru, Karnataka"
-          />
-        </Field>
-
-        <Field label="Employment type" required error={errorFor("job_type")}>
-          <select {...register("job_type")} className={inputClass}>
-            {JOB_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {JOB_TYPE_LABELS[type]}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field
-          label="Categories"
-          error={errorFor("categories")}
-          hint={`Comma-separated. Allowed: ${JOB_CATEGORIES.join(", ")}`}
-        >
-          <input
-            {...register("categories")}
-            className={inputClass}
-            placeholder="engineering, technology"
-          />
-        </Field>
-      </Fieldset>
-
-      <Fieldset legend="Company">
-        <CompanyPicker
-          value={companyId ?? ""}
-          onChange={(id) =>
-            setValue("company_id", id, {
-              shouldDirty: true,
-              shouldValidate: true,
-            })
-          }
-          error={errorFor("company_id")}
-          createPrefill={companyPrefill}
-          onCreateHandled={() => setCompanyPrefill(null)}
-        />
-      </Fieldset>
-
-      <Fieldset legend="Seniority and pay">
-        <Field
-          label="Experience level"
-          required
-          error={errorFor("experience_level")}
-        >
-          <select {...register("experience_level")} className={inputClass}>
-            {EXPERIENCE_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {EXPERIENCE_LEVEL_LABELS[level]}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Job level" error={errorFor("job_level")}>
-          <select {...register("job_level")} className={inputClass}>
-            <option value="">Not specified</option>
-            {JOB_LEVELS.map((level) => (
-              <option key={level} value={level}>
-                {JOB_LEVEL_LABELS[level]}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field
-          label="Minimum experience (years)"
-          error={errorFor("min_experience_years")}
-        >
-          <input
-            type="number"
-            min={0}
-            {...register("min_experience_years")}
-            className={inputClass}
-          />
-        </Field>
-
-        <Field label="Currency" error={errorFor("salary_currency")}>
-          <input
-            {...register("salary_currency")}
-            className={inputClass}
-            maxLength={3}
-          />
-        </Field>
-
-        <Field
-          label="Salary minimum (per year)"
-          error={errorFor("salary_min")}
-          hint="Whole rupees, e.g. 600000"
-        >
-          <input type="number" min={0} {...register("salary_min")} className={inputClass} />
-        </Field>
-
-        <Field label="Salary maximum (per year)" error={errorFor("salary_max")}>
-          <input type="number" min={0} {...register("salary_max")} className={inputClass} />
-        </Field>
-      </Fieldset>
-
-      <Fieldset legend="Listing content">
-        <Field
-          label="Description"
-          required
-          error={errorFor("description")}
-          full
-          hint="Shown in full on the job page and used for the JobPosting structured data."
-        >
-          <textarea
-            {...register("description")}
-            rows={6}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
-
-        <Field
-          label="Responsibilities"
-          error={errorFor("responsibilities")}
-          full
-          hint="One per line."
-        >
-          <textarea
-            {...register("responsibilities")}
-            rows={4}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
-
-        <Field
-          label="Requirements"
-          error={errorFor("requirements")}
-          full
-          hint="One per line."
-        >
-          <textarea
-            {...register("requirements")}
-            rows={4}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
-
-        <Field
-          label="Nice to have"
-          error={errorFor("nice_to_haves")}
-          full
-          hint="One per line."
-        >
-          <textarea
-            {...register("nice_to_haves")}
-            rows={3}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
-
-        <Field
-          label="Perks and benefits"
-          error={errorFor("benefits")}
-          full
-          hint="One per line."
-        >
-          <textarea
-            {...register("benefits")}
-            rows={3}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
-
-        <Field
-          label="Skills"
-          error={errorFor("skills")}
-          full
-          hint="Comma-separated, e.g. Node.js, PostgreSQL, AWS"
-        >
-          <input {...register("skills")} className={inputClass} />
-        </Field>
-      </Fieldset>
-
-      <Fieldset legend="How to apply">
-        <Field
-          label="Application URL"
-          error={errorFor("application_url")}
-          hint="Where the Apply button sends candidates."
-        >
-          <input
-            {...register("application_url")}
-            className={inputClass}
-            placeholder="https://company.com/careers/123"
-          />
-        </Field>
-
-        <Field
-          label="Application email"
-          error={errorFor("application_email")}
-          hint="Used only when no URL is given."
-        >
-          <input
-            {...register("application_email")}
-            className={inputClass}
-            placeholder="jobs@company.com"
-          />
-        </Field>
-
-        <Field
-          label="Application phone"
-          error={errorFor("application_phone")}
-          hint="Used only when no URL or email is given."
-        >
-          <input
-            {...register("application_phone")}
-            type="tel"
-            className={inputClass}
-            placeholder="+91 98765 43210"
-          />
-        </Field>
-      </Fieldset>
+        }
+      />
 
       <Fieldset legend="Publishing">
         <Field label="Status" required error={errorFor("status")}>

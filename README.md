@@ -88,12 +88,49 @@ overwrites an edit made in the admin panel.
 ### 4. Create the admin account
 
 Supabase dashboard → **Authentication → Users → Add user**. Set a password and
-mark the email confirmed.
+mark the email confirmed. Then grant it admin rights with one statement in the
+SQL editor:
 
-The first user created is inserted into `public.admins` automatically, and every
-write policy is gated on membership of that table. Also turn **off** public
-sign-ups under Authentication → Providers → Email, since the site has no
-candidate accounts.
+```sql
+insert into public.admins (user_id, email)
+select id, email from auth.users where email = 'you@example.com';
+```
+
+There is deliberately **no** automatic promotion: the old first-user-becomes-
+admin trigger was dropped when the employer portal introduced public
+(magic-link) sign-up — with it in place, an emptied `admins` table would have
+promoted the next recruiter who signed in. Every write policy is gated on
+membership of `public.admins`.
+
+Leave email sign-ups **enabled** under Authentication → Providers → Email:
+recruiters sign in with magic links. A signed-up user with no `admins` or
+`recruiters` row is authorised for nothing.
+
+For the employer portal, two one-time dashboard settings are also required:
+
+- **Authentication → URL Configuration → Redirect URLs**: add
+  `<your-origin>/auth/callback` (the magic-link landing point).
+- **Authentication → Emails → SMTP Settings**: point Supabase at ZeptoMail's
+  SMTP relay. Supabase's built-in SMTP sends ~2–3 emails/hour and **only to
+  project-team addresses** — magic links will appear to work in testing and
+  silently fail for real recruiters without this.
+
+  In the ZeptoMail dashboard, open your Mail Agent → **Setup Info → SMTP** and
+  copy the values into Supabase:
+
+  | Supabase field | Value |
+  |---|---|
+  | Host | `smtp.zeptomail.in` (India DC) or `smtp.zeptomail.com` (global DC — must match where the Zoho account lives) |
+  | Port | `587` (TLS) |
+  | Username | `emailapikey` (literal) |
+  | Password | the Mail Agent's **SMTP** send-mail token (distinct from the API token in `ZEPTOMAIL_TOKEN`) |
+  | Sender address | an address on the domain verified in that Mail Agent (SPF + DKIM) |
+
+  The app's own notification emails (submission received, approved, changes
+  requested) go through ZeptoMail's HTTP API instead, configured by
+  `ZEPTOMAIL_TOKEN` / `EMAIL_FROM` in `.env.local` — both routes ride the same
+  verified domain, but the tokens are separate on purpose: revoking one
+  doesn't take down the other.
 
 ### 5. Run
 

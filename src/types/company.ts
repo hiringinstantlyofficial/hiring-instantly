@@ -19,10 +19,11 @@ export const COMPANY_SIZE_LABELS: Record<CompanySizeRange, string> = {
   "5000+": "5,000+ employees",
 };
 
-export const COMPANY_STATUSES = ["active", "hidden"] as const;
+export const COMPANY_STATUSES = ["pending", "active", "hidden"] as const;
 export type CompanyStatus = (typeof COMPANY_STATUSES)[number];
 
 export const COMPANY_STATUS_LABELS: Record<CompanyStatus, string> = {
+  pending: "Pending review",
   active: "Active",
   hidden: "Hidden",
 };
@@ -57,12 +58,20 @@ export type Company = {
   is_verified: boolean;
   status: CompanyStatus;
 
+  /** The auth user who created the row; null for admin-typed companies. */
+  created_by: string | null;
+  /** Derived from the website host by a trigger; drives the D4 domain match. */
+  email_domain: string | null;
+
   created_at: string;
   updated_at: string;
 };
 
 /** Fields the admin form writes. Server-managed columns are omitted. */
-export type CompanyInput = Omit<Company, "created_at" | "updated_at">;
+export type CompanyInput = Omit<
+  Company,
+  "created_at" | "updated_at" | "created_by" | "email_domain"
+>;
 
 /**
  * The subset of a company embedded alongside every job read.

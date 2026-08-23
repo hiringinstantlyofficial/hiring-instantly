@@ -65,15 +65,32 @@ export const JOB_CATEGORY_LABELS: Record<JobCategory, string> = {
   technology: "Technology",
 };
 
-export const JOB_STATUSES = ["draft", "active", "closed", "expired"] as const;
+export const JOB_STATUSES = [
+  "draft",
+  "pending",
+  "active",
+  "rejected",
+  "closed",
+  "expired",
+] as const;
 export type JobStatus = (typeof JOB_STATUSES)[number];
 
+/**
+ * `pending` and `rejected` are worded for the recruiter who reads them:
+ * the review flow is a revision loop, so `rejected` reads "Needs changes",
+ * never "Rejected".
+ */
 export const JOB_STATUS_LABELS: Record<JobStatus, string> = {
   draft: "Draft",
+  pending: "In review",
   active: "Active",
+  rejected: "Needs changes",
   closed: "Closed",
   expired: "Expired",
 };
+
+export const JOB_SOURCES = ["admin", "recruiter"] as const;
+export type JobSource = (typeof JOB_SOURCES)[number];
 
 /**
  * Annual salary bands used by the sidebar facet, denominated in INR to suit the
@@ -144,6 +161,20 @@ export type Job = {
   is_featured: boolean;
   posted_at: string;
   valid_through: string | null;
+
+  /** Who sent it (null for admin-typed listings) — survives approval (D8). */
+  submitted_by: string | null;
+  source: JobSource;
+  reviewed_by: string | null;
+  reviewed_at: string | null;
+  /** Shown to the recruiter verbatim when changes are requested. */
+  review_note: string | null;
+  /**
+   * The row as it looked when last approved, captured by a trigger on the
+   * `-> active` transition. The re-review diff renders against this.
+   */
+  approved_snapshot: Record<string, unknown> | null;
+
   created_at: string;
   updated_at: string;
 };
@@ -161,7 +192,18 @@ export type JobWithCompany = Job & { company: CompanyRef | null };
  */
 export type JobInput = Omit<
   Job,
-  "id" | "created_at" | "updated_at" | "applicants_count" | "company_name"
+  | "id"
+  | "created_at"
+  | "updated_at"
+  | "applicants_count"
+  | "company_name"
+  // Review metadata is written by the review actions and triggers alone.
+  | "submitted_by"
+  | "source"
+  | "reviewed_by"
+  | "reviewed_at"
+  | "review_note"
+  | "approved_snapshot"
 > & { applicants_count?: number };
 
 export interface JobFilters {

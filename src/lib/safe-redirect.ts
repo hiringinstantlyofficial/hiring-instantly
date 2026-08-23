@@ -38,29 +38,50 @@ function hasUnsafeChar(value: string): boolean {
  */
 const ENCODED_SEPARATOR = /%(?:2f|5c)/i;
 
-export function safeAdminRedirect(raw: string | null | undefined): string {
-  if (!raw) return FALLBACK;
+/**
+ * The general form: same validation, parameterised over which path prefixes
+ * are acceptable destinations. Each prefix admits itself and anything nested
+ * under it (`/employers` admits `/employers` and `/employers/jobs/new`).
+ */
+export function safeInternalRedirect(
+  raw: string | null | undefined,
+  allowedPrefixes: readonly string[],
+  fallback: string,
+): string {
+  if (!raw) return fallback;
 
   // Reject anything that isn't plainly a same-origin absolute path before it
   // ever reaches the parser.
-  if (!raw.startsWith("/")) return FALLBACK;
-  if (raw.startsWith("//")) return FALLBACK;
-  if (hasUnsafeChar(raw)) return FALLBACK;
-  if (ENCODED_SEPARATOR.test(raw)) return FALLBACK;
+  if (!raw.startsWith("/")) return fallback;
+  if (raw.startsWith("//")) return fallback;
+  if (hasUnsafeChar(raw)) return fallback;
+  if (ENCODED_SEPARATOR.test(raw)) return fallback;
 
   let url: URL;
   try {
     url = new URL(raw, BASE);
   } catch {
-    return FALLBACK;
+    return fallback;
   }
 
   // `new URL` has now resolved any `..` segments and percent-encoding, so the
   // test below sees the path a browser would actually navigate to.
-  if (url.origin !== BASE) return FALLBACK;
-  if (url.pathname !== "/admin" && !url.pathname.startsWith("/admin/")) {
-    return FALLBACK;
-  }
+  if (url.origin !== BASE) return fallback;
+
+  const allowed = allowedPrefixes.some(
+    (prefix) =>
+      url.pathname === prefix || url.pathname.startsWith(`${prefix}/`),
+  );
+  if (!allowed) return fallback;
 
   return `${url.pathname}${url.search}${url.hash}`;
+}
+
+export function safeAdminRedirect(raw: string | null | undefined): string {
+  return safeInternalRedirect(raw, ["/admin"], FALLBACK);
+}
+
+/** The recruiter-side counterpart, used by the login page and the callback. */
+export function safeEmployerRedirect(raw: string | null | undefined): string {
+  return safeInternalRedirect(raw, ["/employers"], "/employers");
 }

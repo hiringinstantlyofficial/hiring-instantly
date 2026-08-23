@@ -91,6 +91,8 @@ export function ArticleCategoryBadge({
 const statusStyles: Record<JobStatus, string> = {
   active: "bg-accent-green/10 text-accent-green",
   draft: "bg-slate-400/10 text-slate-600",
+  pending: "bg-accent-yellow/15 text-accent-yellow",
+  rejected: "bg-accent-red/10 text-accent-red",
   closed: "bg-accent-red/10 text-accent-red",
   expired: "bg-accent-yellow/15 text-accent-yellow",
 };

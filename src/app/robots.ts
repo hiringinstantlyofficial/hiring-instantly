@@ -15,6 +15,9 @@ export default function robots(): MetadataRoute.Robots {
         disallow: [
           "/admin",
           "/admin/",
+          "/employers",
+          "/employers/",
+          "/auth/",
           "/api/",
           "/jobs?*q=",
           "/jobs?*location=",

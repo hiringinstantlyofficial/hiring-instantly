@@ -23,6 +23,7 @@ const selectClass =
   "border border-line bg-white px-3 py-2 text-sm text-navy-700 focus:border-primary focus:outline-none";
 
 const statusStyles: Record<CompanyStatus, string> = {
+  pending: "bg-accent-yellow/15 text-accent-yellow",
   active: "bg-accent-green/10 text-accent-green",
   hidden: "bg-slate-400/10 text-slate-600",
 };
@@ -175,6 +176,13 @@ export function CompanyTable() {
                         </p>
                         <p className="truncate text-xs text-slate-400">
                           /companies/{company.slug}
+                          {/* created_by is only set on recruiter-created rows —
+                              the admin's own forms never populate it. */}
+                          {company.created_by ? (
+                            <span className="ml-1.5 rounded-full bg-accent-blue/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent-blue">
+                              Recruiter-created
+                            </span>
+                          ) : null}
                         </p>
                       </div>
                     </div>

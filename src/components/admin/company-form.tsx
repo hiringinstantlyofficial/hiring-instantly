@@ -3,23 +3,30 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { useForm, type FieldError } from "react-hook-form";
+import {
+  useForm,
+  type FieldError,
+  type UseFormRegister,
+} from "react-hook-form";
 import { TriangleAlert } from "lucide-react";
 
 import { revalidateCompanyPaths } from "@/app/actions/admin";
+import {
+  CompanyDetailFields,
+  CompanyIdentityFields,
+} from "@/components/admin/company-fields";
 import { Field, Fieldset, inputClass } from "@/components/admin/form-fields";
 import { ImageUploader } from "@/components/admin/image-uploader";
 import { Button } from "@/components/ui/button";
 import { createClient } from "@/lib/supabase/client";
-import { cn, slugify } from "@/lib/utils";
+import { slugify } from "@/lib/utils";
 import {
   companyFormSchema,
   type CompanyFormOutput,
   type CompanyFormValues,
+  type RecruiterCompanyValues,
 } from "@/lib/validations";
 import {
-  COMPANY_SIZE_LABELS,
-  COMPANY_SIZE_RANGES,
   COMPANY_STATUSES,
   COMPANY_STATUS_LABELS,
   type Company,
@@ -177,80 +184,43 @@ export function CompanyForm({
         </div>
       ) : null}
 
-      <Fieldset legend="Identity">
-        <Field label="Company name" required error={errorFor("name")}>
-          <input
-            {...register("name")}
-            className={inputClass}
-            placeholder="Acme Labs"
-          />
-        </Field>
+      {/* Shared with the recruiter wizard via company-fields.tsx; the slug and
+          legal name are admin-only and slot in here. */}
+      <CompanyIdentityFields
+        mode="admin"
+        // The shared fields are typed against the recruiter subset; the admin
+        // form's values are a strict superset, but react-hook-form's generics
+        // aren't covariant, so the relationship is asserted here.
+        register={register as unknown as UseFormRegister<RecruiterCompanyValues>}
+        errorFor={errorFor}
+        identityExtras={
+          <>
+            <Field
+              label="Slug"
+              error={errorFor("slug")}
+              hint={
+                isEdit
+                  ? "Changing this breaks the existing public URL and any links to it."
+                  : `Public URL: /companies/${slug || "company-name"}`
+              }
+            >
+              <input {...register("slug")} className={inputClass} />
+            </Field>
 
-        <Field
-          label="Slug"
-          error={errorFor("slug")}
-          hint={
-            isEdit
-              ? "Changing this breaks the existing public URL and any links to it."
-              : `Public URL: /companies/${slug || "company-name"}`
-          }
-        >
-          <input {...register("slug")} className={inputClass} />
-        </Field>
-
-        <Field
-          label="Legal name"
-          error={errorFor("legal_name")}
-          hint="Only if it differs from the trading name."
-        >
-          <input
-            {...register("legal_name")}
-            className={inputClass}
-            placeholder="Acme Labs Private Limited"
-          />
-        </Field>
-
-        <Field label="Website" error={errorFor("website")}>
-          <input
-            {...register("website")}
-            className={inputClass}
-            placeholder="https://example.com"
-          />
-        </Field>
-
-        <Field label="LinkedIn" error={errorFor("linkedin_url")}>
-          <input
-            {...register("linkedin_url")}
-            className={inputClass}
-            placeholder="https://www.linkedin.com/company/…"
-          />
-        </Field>
-
-        <Field
-          label="Tagline"
-          error={errorFor("tagline")}
-          hint="One line. Shown on the company card and used as the meta description."
-        >
-          <input
-            {...register("tagline")}
-            className={inputClass}
-            placeholder="Payments infrastructure for Indian businesses"
-          />
-        </Field>
-
-        <Field
-          label="About the company"
-          error={errorFor("description")}
-          full
-          hint="Written once here — every listing this company owns shows this same text."
-        >
-          <textarea
-            {...register("description")}
-            rows={8}
-            className={cn(inputClass, "resize-y")}
-          />
-        </Field>
-      </Fieldset>
+            <Field
+              label="Legal name"
+              error={errorFor("legal_name")}
+              hint="Only if it differs from the trading name."
+            >
+              <input
+                {...register("legal_name")}
+                className={inputClass}
+                placeholder="Acme Labs Private Limited"
+              />
+            </Field>
+          </>
+        }
+      />
 
       <Fieldset legend="Images">
         <ImageUploader
@@ -289,45 +259,10 @@ export function CompanyForm({
         ) : null}
       </Fieldset>
 
-      <Fieldset legend="Details">
-        <Field label="Industry" error={errorFor("industry")}>
-          <input
-            {...register("industry")}
-            className={inputClass}
-            placeholder="Fintech"
-          />
-        </Field>
-
-        <Field label="Headquarters" error={errorFor("headquarters")}>
-          <input
-            {...register("headquarters")}
-            className={inputClass}
-            placeholder="Bengaluru, Karnataka"
-          />
-        </Field>
-
-        <Field label="Company size" error={errorFor("size_range")}>
-          <select {...register("size_range")} className={inputClass}>
-            <option value="">Not specified</option>
-            {COMPANY_SIZE_RANGES.map((range) => (
-              <option key={range} value={range}>
-                {COMPANY_SIZE_LABELS[range]}
-              </option>
-            ))}
-          </select>
-        </Field>
-
-        <Field label="Founded" error={errorFor("founded_year")}>
-          <input
-            type="number"
-            min={1800}
-            max={2100}
-            {...register("founded_year")}
-            className={inputClass}
-            placeholder="2016"
-          />
-        </Field>
-      </Fieldset>
+      <CompanyDetailFields
+        register={register as unknown as UseFormRegister<RecruiterCompanyValues>}
+        errorFor={errorFor}
+      />
 
       <Fieldset legend="Publishing">
         <Field label="Status" required error={errorFor("status")}>

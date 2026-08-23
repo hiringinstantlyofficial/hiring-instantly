@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ExternalLink, Pencil, Search, Trash2 } from "lucide-react";
+import { ClipboardCheck, ExternalLink, Pencil, Search, Trash2 } from "lucide-react";
 
 import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { CompanyLogo } from "@/components/ui/company-logo";
@@ -137,7 +137,7 @@ export function JobTable({ limit }: { limit?: number }) {
 
       {rows.length ? (
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
+          <table className="w-full min-w-[960px] text-left text-sm">
             <caption className="sr-only">Job listings</caption>
             <thead>
               <tr className="border-b border-line text-xs uppercase tracking-wide text-slate-400">
@@ -146,6 +146,9 @@ export function JobTable({ limit }: { limit?: number }) {
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold">
                   Type
+                </th>
+                <th scope="col" className="px-4 py-3 font-semibold">
+                  Source
                 </th>
                 <th scope="col" className="px-4 py-3 font-semibold">
                   Posted
@@ -189,6 +192,18 @@ export function JobTable({ limit }: { limit?: number }) {
                   <td className="px-4 py-3 text-slate-600">
                     {JOB_TYPE_LABELS[job.job_type]}
                   </td>
+                  <td className="px-4 py-3">
+                    {/* Permanent, surviving approval (D8): this is what lets
+                        "everything a recruiter sent us" be filtered a month
+                        later when a pattern surfaces. */}
+                    {job.source === "recruiter" ? (
+                      <span className="rounded-full bg-accent-blue/10 px-2 py-0.5 text-xs font-semibold text-accent-blue">
+                        Recruiter
+                      </span>
+                    ) : (
+                      <span className="text-xs text-slate-400">Admin</span>
+                    )}
+                  </td>
                   <td className="whitespace-nowrap px-4 py-3 text-slate-600">
                     {formatDate(job.posted_at)}
                   </td>
@@ -221,6 +236,15 @@ export function JobTable({ limit }: { limit?: number }) {
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
+                      {job.status === "pending" ? (
+                        <Link
+                          href="/admin/review"
+                          aria-label={`Review ${job.title}`}
+                          className="p-2 text-primary hover:text-primary-hover"
+                        >
+                          <ClipboardCheck className="size-4" aria-hidden />
+                        </Link>
+                      ) : null}
                       {job.status === "active" ? (
                         <Link
                           href={`/jobs/${job.slug}`}

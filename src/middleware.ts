@@ -2,10 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Refreshes the Supabase auth cookie on every request and gates /admin.
+ * Refreshes the Supabase auth cookie on every matched request and gates the
+ * two dashboards: /admin (password) and /employers (magic link).
  *
  * This is the first of three layers: middleware redirects anonymous visitors,
- * the admin layout re-checks the session and admin membership server-side, and
+ * each protected layout re-checks the session and role server-side, and
  * Row-Level Security is the final authority on every query. Middleware alone is
  * never the security boundary.
  */
@@ -40,25 +41,46 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
-  const isLoginRoute = pathname === "/admin/login";
   const isAdminRoute = pathname.startsWith("/admin");
+  const isEmployerRoute = pathname.startsWith("/employers");
+  const isAdminLogin = pathname === "/admin/login";
+  const isEmployerLogin = pathname === "/employers/login";
+  const isLoginRoute = isAdminLogin || isEmployerLogin;
 
-  if (isAdminRoute && !isLoginRoute && !user) {
+  if (!user && !isLoginRoute && (isAdminRoute || isEmployerRoute)) {
     const loginUrl = request.nextUrl.clone();
-    loginUrl.pathname = "/admin/login";
+    loginUrl.pathname = isAdminRoute ? "/admin/login" : "/employers/login";
     loginUrl.search = `?next=${encodeURIComponent(pathname)}`;
     return NextResponse.redirect(loginUrl);
   }
 
-  if (isLoginRoute && user) {
-    const dashboardUrl = request.nextUrl.clone();
-    dashboardUrl.pathname = "/admin";
-    dashboardUrl.search = "";
-    return NextResponse.redirect(dashboardUrl);
+  if (user && isLoginRoute) {
+    // Route by role, not by which login page they landed on: a recruiter who
+    // wanders onto /admin/login should end up on their own dashboard, not on
+    // a screen telling them they aren't an administrator. The lookups run
+    // only on the two login routes, so the extra round trips never sit in
+    // front of a dashboard page load.
+    const [{ data: isAdmin }, { data: recruiter }] = await Promise.all([
+      supabase.rpc("is_admin"),
+      supabase
+        .from("recruiters")
+        .select("user_id")
+        .eq("user_id", user.id)
+        .maybeSingle(),
+    ]);
+
+    const homeUrl = request.nextUrl.clone();
+    homeUrl.pathname = isAdmin
+      ? "/admin"
+      : recruiter
+        ? "/employers"
+        : "/employers/onboarding";
+    homeUrl.search = "";
+    return NextResponse.redirect(homeUrl);
   }
 
-  // Keep crawlers off the dashboard even if a link leaks.
-  if (isAdminRoute) {
+  // Keep crawlers off both dashboards even if a link leaks.
+  if (isAdminRoute || isEmployerRoute) {
     response.headers.set("X-Robots-Tag", "noindex, nofollow");
   }
 
@@ -67,16 +89,17 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   /*
-   * Admin routes only.
+   * Dashboard routes only.
    *
    * This middleware calls supabase.auth.getUser(), which is a network round
    * trip to Supabase's auth server. Running it site-wide put that round trip in
    * front of every public page load - hundreds of milliseconds before Next even
-   * started rendering, on pages that have no session to refresh (the public site
-   * has no user accounts at all).
+   * started rendering, on pages that have no session to refresh.
    *
-   * Scoping it here means public pages are served straight from the static/ISR
-   * cache, and only /admin pays the auth check.
+   * Scoping it here means public pages — /post-a-job included, which must stay
+   * statically served (D9) — come straight from the static/ISR cache, and only
+   * the dashboards pay the auth check. /auth/callback also stays outside: it
+   * does its own session work.
    */
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/employers/:path*"],
 };
