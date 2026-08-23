@@ -34,7 +34,7 @@ export default async function EditArticlePage({
     new Date(article.published_at).getTime() <= Date.now();
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/admin/blog"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"

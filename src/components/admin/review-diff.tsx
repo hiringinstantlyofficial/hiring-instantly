@@ -27,6 +27,8 @@ const SKIPPED_FIELDS = new Set([
   "company_name",
   "applicants_count",
   "is_featured",
+  // Broadcast bookkeeping, not listing content.
+  "newsletter_sent_at",
 ]);
 
 const FIELD_LABELS: Record<string, string> = {

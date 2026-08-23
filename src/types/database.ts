@@ -82,6 +82,7 @@ type JobInsert = {
   reviewed_at?: string | null;
   review_note?: string | null;
   approved_snapshot?: Record<string, unknown> | null;
+  newsletter_sent_at?: string | null;
   created_at?: string;
   updated_at?: string;
 };
@@ -187,12 +188,16 @@ type ContactSubmissionInsert = {
 type NewsletterSubscriberRow = {
   id: string;
   email: string;
+  unsubscribe_token: string;
+  unsubscribed_at: string | null;
   created_at: string;
 };
 
 type NewsletterSubscriberInsert = {
   id?: string;
   email: string;
+  unsubscribe_token?: string;
+  unsubscribed_at?: string | null;
   created_at?: string;
 };
 

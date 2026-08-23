@@ -10,6 +10,10 @@ import { TrustChips } from "@/components/admin/trust-chips";
 import { Button } from "@/components/ui/button";
 import { CompanyLogo } from "@/components/ui/company-logo";
 import {
+  useNewsletterSubscriberCount,
+  useSendJobNewsletter,
+} from "@/hooks/use-newsletter";
+import {
   useReviewActions,
   useReviewQueue,
   type ScoredQueueItem,
@@ -61,6 +65,12 @@ export function ReviewQueue() {
   const [note, setNote] = useState("");
   const [rejectFor, setRejectFor] = useState<{ jobId: string; block: boolean } | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // An approval hands off to this prompt: "also email the subscribers?"
+  const [notifyFor, setNotifyFor] = useState<{ jobId: string; title: string } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const sendNewsletter = useSendJobNewsletter();
+  const { data: subscriberCount } = useNewsletterSubscriberCount();
 
   const list = useMemo(() => entries ?? [], [entries]);
   const selected = list[Math.min(selectedIndex, Math.max(list.length - 1, 0))];
@@ -84,7 +94,13 @@ export function ReviewQueue() {
     if (!selected || busy) return;
     if (selected.item.kind === "job") {
       const jobId = selected.item.job.id;
-      void runAction(() => actions.approve.mutateAsync(jobId));
+      const title = selected.item.job.title;
+      void runAction(async () => {
+        await actions.approve.mutateAsync(jobId);
+        // The queue invalidates and the row vanishes, so the prompt carries
+        // its own copy of what was just approved.
+        setNotifyFor({ jobId, title });
+      });
     } else {
       const membershipId = selected.item.membership.id;
       void runAction(() =>
@@ -106,7 +122,7 @@ export function ReviewQueue() {
       ) {
         return;
       }
-      if (changesFor || rejectFor) return;
+      if (changesFor || rejectFor || notifyFor) return;
 
       switch (event.key.toLowerCase()) {
         case "j":
@@ -142,7 +158,7 @@ export function ReviewQueue() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- approveSelected closes over the same state this effect lists
-  }, [list.length, selected, changesFor, rejectFor, busy]);
+  }, [list.length, selected, changesFor, rejectFor, notifyFor, busy]);
 
   if (isPending) {
     return (
@@ -178,7 +194,7 @@ export function ReviewQueue() {
     <div className="flex flex-col gap-6 lg:flex-row">
       {/* Queue — sorted by risk, time as tiebreaker. */}
       <div className="w-full shrink-0 lg:w-[380px]">
-        <p className="mb-2 text-xs text-slate-400">
+        <p className="mb-2 hidden text-xs text-slate-400 lg:block">
           <kbd className="border border-line bg-white px-1">J</kbd>/
           <kbd className="border border-line bg-white px-1">K</kbd> move ·{" "}
           <kbd className="border border-line bg-white px-1">A</kbd> approve ·{" "}
@@ -254,6 +270,12 @@ export function ReviewQueue() {
         {actionError ? (
           <p className="mb-4 border border-accent-red/40 bg-accent-red/5 p-3 text-sm text-accent-red" role="alert">
             {actionError}
+          </p>
+        ) : null}
+
+        {notice ? (
+          <p className="mb-4 border border-accent-green/40 bg-accent-green/5 p-3 text-sm text-accent-green" role="status">
+            {notice}
           </p>
         ) : null}
 
@@ -400,6 +422,40 @@ export function ReviewQueue() {
           </div>
         </div>
       ) : null}
+
+      {/* Post-approval: the listing is already live; this only decides whether
+          the newsletter list hears about it. */}
+      <ConfirmDialog
+        open={Boolean(notifyFor)}
+        variant="send"
+        title="Email this job to subscribers?"
+        description={
+          notifyFor
+            ? `"${notifyFor.title}" is now live. Send it to ${
+                subscriberCount === undefined
+                  ? "all"
+                  : subscriberCount.toLocaleString("en-IN")
+              } newsletter subscriber${subscriberCount === 1 ? "" : "s"}? Skipping changes nothing about the listing itself.`
+            : ""
+        }
+        confirmLabel="Send the email"
+        pending={sendNewsletter.isPending}
+        onCancel={() => setNotifyFor(null)}
+        onConfirm={() => {
+          if (!notifyFor) return;
+          setNotice(null);
+          sendNewsletter.mutate(notifyFor.jobId, {
+            onSuccess: (sent) =>
+              setNotice(
+                sent === 0
+                  ? "No active subscribers yet — nothing was sent."
+                  : `Emailed ${sent.toLocaleString("en-IN")} subscriber${sent === 1 ? "" : "s"}.`,
+              ),
+            onError: (mutationError) => setActionError(mutationError.message),
+            onSettled: () => setNotifyFor(null),
+          });
+        }}
+      />
 
       <ConfirmDialog
         open={Boolean(rejectFor)}

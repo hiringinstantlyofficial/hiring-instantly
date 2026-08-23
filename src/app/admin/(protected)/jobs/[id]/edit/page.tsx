@@ -31,7 +31,7 @@ export default async function EditJobPage({
   const job = data as Job;
 
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/admin/jobs"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"

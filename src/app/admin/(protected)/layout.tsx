@@ -1,36 +1,11 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  Briefcase,
-  Building2,
-  ClipboardCheck,
-  Inbox,
-  LayoutDashboard,
-  LogOut,
-  Newspaper,
-  Plus,
-  Users,
-} from "lucide-react";
+import { LogOut } from "lucide-react";
 
 import { signOut } from "@/app/actions/admin";
-import { ReviewBadge } from "@/components/admin/review-badge";
+import { AdminNavLinks, MobileAdminNav } from "@/components/admin/admin-nav";
 import { QueryProvider } from "@/components/providers/query-provider";
 import { Logo } from "@/components/ui/logo";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-
-// Review sits above Jobs on purpose: it is the one entry with a
-// service-level expectation attached ("reviewed within one working day"),
-// so it belongs first in the eye line. Its badge is the admin's whole
-// notification system for recruiter submissions.
-const navItems = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/review", label: "Review", icon: ClipboardCheck, badge: true },
-  { href: "/admin/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/admin/companies", label: "Companies", icon: Building2 },
-  { href: "/admin/recruiters", label: "Recruiters", icon: Users },
-  { href: "/admin/blog", label: "Blog", icon: Newspaper },
-  { href: "/admin/messages", label: "Messages", icon: Inbox },
-] as const;
 
 /**
  * Second gate after middleware: re-checks the session server-side and confirms
@@ -78,45 +53,29 @@ export default async function ProtectedAdminLayout({
 
   return (
     <QueryProvider>
-      <div className="flex min-h-screen flex-1 flex-col lg:flex-row">
-        <aside className="shrink-0 border-b border-line bg-white lg:w-64 lg:border-r lg:border-b-0">
-          {/* On mobile this row is the only chrome, so it carries the wordmark
-              and sign-out that the desktop sidebar keeps at its foot. */}
-          <div className="flex items-center justify-between border-b border-line p-4 lg:block lg:border-b-0 lg:p-6">
+      {/* Desktop: the shell is exactly one viewport tall and never scrolls
+          itself — the sidebar stays put and only the content pane scrolls.
+          Mobile: one compact sticky top bar; the nav lives in a slide-in
+          drawer, and the page scrolls as normal. */}
+      <div className="flex min-h-screen flex-1 flex-col lg:h-screen lg:flex-row lg:overflow-hidden">
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-line bg-white px-4 py-3 lg:hidden">
+          <Logo href="/admin" />
+          <MobileAdminNav email={user.email ?? ""} signOutAction={signOut} />
+        </header>
+
+        <aside className="hidden shrink-0 border-r border-line bg-white lg:flex lg:h-full lg:w-64 lg:flex-col">
+          <div className="p-6">
             <Logo href="/admin" />
-            <form action={signOut} className="lg:hidden">
-              <button
-                type="submit"
-                className="flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-accent-red"
-              >
-                <LogOut className="size-4" aria-hidden />
-                Sign out
-              </button>
-            </form>
           </div>
 
-          <nav aria-label="Admin" className="flex gap-1 p-3 lg:flex-col lg:p-4">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-3 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-primary-surface hover:text-primary"
-              >
-                <item.icon className="size-5" aria-hidden />
-                {item.label}
-                {"badge" in item && item.badge ? <ReviewBadge /> : null}
-              </Link>
-            ))}
-            <Link
-              href="/admin/jobs/new"
-              className="ml-auto flex items-center gap-2 bg-primary px-4 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover lg:ml-0 lg:mt-4 lg:justify-center"
-            >
-              <Plus className="size-4" aria-hidden />
-              New job
-            </Link>
+          <nav
+            aria-label="Admin"
+            className="flex flex-1 flex-col gap-1 overflow-y-auto p-4 pt-0"
+          >
+            <AdminNavLinks />
           </nav>
 
-          <div className="hidden border-t border-line p-4 lg:block">
+          <div className="shrink-0 border-t border-line p-4">
             <p className="truncate text-xs text-slate-400">{user.email}</p>
             <form action={signOut}>
               <button
@@ -130,7 +89,9 @@ export default async function ProtectedAdminLayout({
           </div>
         </aside>
 
-        <div className="min-w-0 flex-1 bg-surface-muted">{children}</div>
+        <div className="min-w-0 flex-1 bg-surface-muted lg:h-full lg:overflow-y-auto">
+          {children}
+        </div>
       </div>
     </QueryProvider>
   );

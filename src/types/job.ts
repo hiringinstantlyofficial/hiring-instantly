@@ -175,6 +175,9 @@ export type Job = {
    */
   approved_snapshot: Record<string, unknown> | null;
 
+  /** When this listing was last emailed to newsletter subscribers. */
+  newsletter_sent_at: string | null;
+
   created_at: string;
   updated_at: string;
 };
@@ -204,6 +207,8 @@ export type JobInput = Omit<
   | "reviewed_at"
   | "review_note"
   | "approved_snapshot"
+  // Stamped by the broadcast action alone.
+  | "newsletter_sent_at"
 > & { applicants_count?: number };
 
 export interface JobFilters {

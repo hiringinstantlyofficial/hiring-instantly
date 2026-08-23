@@ -31,6 +31,80 @@ function isScheduled(article: ArticleSummary): boolean {
   );
 }
 
+/** View / edit / delete icons, shared by the desktop rows and mobile cards. */
+function ArticleActions({
+  article,
+  scheduled,
+  onDelete,
+}: {
+  article: ArticleSummary;
+  scheduled: boolean;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {article.status === "published" && !scheduled ? (
+        <Link
+          href={`/blog/${article.slug}`}
+          target="_blank"
+          aria-label={`View ${article.title} on the public site`}
+          className="p-2 text-slate-400 hover:text-primary"
+        >
+          <ExternalLink className="size-4" aria-hidden />
+        </Link>
+      ) : null}
+      <Link
+        href={`/admin/blog/${article.id}/edit`}
+        aria-label={`Edit ${article.title}`}
+        className="p-2 text-slate-400 hover:text-primary"
+      >
+        <Pencil className="size-4" aria-hidden />
+      </Link>
+      <button
+        type="button"
+        onClick={onDelete}
+        aria-label={`Delete ${article.title}`}
+        className="p-2 text-slate-400 hover:text-accent-red"
+      >
+        <Trash2 className="size-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function ArticleStatusSelect({
+  id,
+  article,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  article: ArticleSummary;
+  disabled: boolean;
+  onChange: (status: ArticleStatus) => void;
+}) {
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>
+        Status for {article.title}
+      </label>
+      <select
+        id={id}
+        value={article.status}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as ArticleStatus)}
+        className="border border-line bg-white px-2 py-1 text-xs text-navy-700 focus:border-primary focus:outline-none"
+      >
+        {ARTICLE_STATUSES.map((status) => (
+          <option key={status} value={status}>
+            {ARTICLE_STATUS_LABELS[status]}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
 export function ArticleTable({ limit }: { limit?: number }) {
   const [filters, setFilters] = useState<AdminArticleFilters>({
     search: "",
@@ -51,8 +125,8 @@ export function ArticleTable({ limit }: { limit?: number }) {
   return (
     <div className="border border-line bg-white">
       {limit ? null : (
-        <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
-          <div className="relative min-w-0 flex-1">
+        <div className="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center">
+          <div className="relative sm:min-w-0 sm:flex-1">
             <Search
               className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
               aria-hidden
@@ -75,49 +149,51 @@ export function ArticleTable({ limit }: { limit?: number }) {
             />
           </div>
 
-          <div>
-            <label htmlFor="admin-article-status" className="sr-only">
-              Filter by status
-            </label>
-            <select
-              id="admin-article-status"
-              value={filters.status}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  status: event.target.value as AdminArticleFilters["status"],
-                }))
-              }
-              className={selectClass}
-            >
-              <option value="all">All statuses</option>
-              {ARTICLE_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {ARTICLE_STATUS_LABELS[status]}
-                </option>
-              ))}
-            </select>
-          </div>
+          <div className="grid grid-cols-2 gap-3 sm:flex">
+            <div>
+              <label htmlFor="admin-article-status" className="sr-only">
+                Filter by status
+              </label>
+              <select
+                id="admin-article-status"
+                value={filters.status}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    status: event.target.value as AdminArticleFilters["status"],
+                  }))
+                }
+                className={`${selectClass} w-full sm:w-auto`}
+              >
+                <option value="all">All statuses</option>
+                {ARTICLE_STATUSES.map((status) => (
+                  <option key={status} value={status}>
+                    {ARTICLE_STATUS_LABELS[status]}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-          <div>
-            <label htmlFor="admin-article-sort" className="sr-only">
-              Sort
-            </label>
-            <select
-              id="admin-article-sort"
-              value={filters.sort}
-              onChange={(event) =>
-                setFilters((current) => ({
-                  ...current,
-                  sort: event.target.value as AdminArticleFilters["sort"],
-                }))
-              }
-              className={selectClass}
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="title">Title A–Z</option>
-            </select>
+            <div>
+              <label htmlFor="admin-article-sort" className="sr-only">
+                Sort
+              </label>
+              <select
+                id="admin-article-sort"
+                value={filters.sort}
+                onChange={(event) =>
+                  setFilters((current) => ({
+                    ...current,
+                    sort: event.target.value as AdminArticleFilters["sort"],
+                  }))
+                }
+                className={`${selectClass} w-full sm:w-auto`}
+              >
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="title">Title A–Z</option>
+              </select>
+            </div>
           </div>
         </div>
       )}
@@ -150,8 +226,59 @@ export function ArticleTable({ limit }: { limit?: number }) {
         </div>
       ) : null}
 
+      {/* Phones get stacked cards — the 820px table would clip five of its
+          six columns off the viewport with no hint they exist. */}
       {rows.length ? (
-        <div className="overflow-x-auto">
+        <ul className="divide-y divide-line-soft md:hidden">
+          {rows.map((article) => {
+            const scheduled = isScheduled(article);
+
+            return (
+              <li key={article.id} className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-navy-700">
+                      {article.title}
+                    </p>
+                    <p className="truncate text-xs text-slate-400">
+                      /blog/{article.slug}
+                    </p>
+                  </div>
+                  <div className="-mr-2 -mt-1 shrink-0">
+                    <ArticleActions
+                      article={article}
+                      scheduled={scheduled}
+                      onDelete={() => setPendingDelete(article)}
+                    />
+                  </div>
+                </div>
+                <p className="mt-2 flex items-center gap-1.5 text-xs text-slate-600">
+                  {scheduled ? (
+                    <CalendarClock className="size-4 text-primary" aria-hidden />
+                  ) : null}
+                  {ARTICLE_CATEGORY_LABELS[article.category]} ·{" "}
+                  {formatDate(article.published_at)} · {article.reading_minutes}{" "}
+                  min
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <ArticleStatusSelect
+                    id={`status-m-${article.id}`}
+                    article={article}
+                    disabled={updateStatus.isPending}
+                    onChange={(status) => updateStatus.mutate({ article, status })}
+                  />
+                  {scheduled ? (
+                    <span className="text-xs text-primary">Scheduled</span>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+
+      {rows.length ? (
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[820px] text-left text-sm">
             <caption className="sr-only">Blog articles</caption>
             <thead>
@@ -213,59 +340,24 @@ export function ArticleTable({ limit }: { limit?: number }) {
                       {article.reading_minutes} min
                     </td>
                     <td className="px-4 py-3">
-                      <label className="sr-only" htmlFor={`status-${article.id}`}>
-                        Status for {article.title}
-                      </label>
-                      <select
+                      <ArticleStatusSelect
                         id={`status-${article.id}`}
-                        value={article.status}
+                        article={article}
                         disabled={updateStatus.isPending}
-                        onChange={(event) =>
-                          updateStatus.mutate({
-                            article,
-                            status: event.target.value as ArticleStatus,
-                          })
+                        onChange={(status) =>
+                          updateStatus.mutate({ article, status })
                         }
-                        className="border border-line bg-white px-2 py-1 text-xs text-navy-700 focus:border-primary focus:outline-none"
-                      >
-                        {ARTICLE_STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {ARTICLE_STATUS_LABELS[status]}
-                          </option>
-                        ))}
-                      </select>
+                      />
                       {scheduled ? (
                         <p className="mt-1 text-xs text-primary">Scheduled</p>
                       ) : null}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1">
-                        {article.status === "published" && !scheduled ? (
-                          <Link
-                            href={`/blog/${article.slug}`}
-                            target="_blank"
-                            aria-label={`View ${article.title} on the public site`}
-                            className="p-2 text-slate-400 hover:text-primary"
-                          >
-                            <ExternalLink className="size-4" aria-hidden />
-                          </Link>
-                        ) : null}
-                        <Link
-                          href={`/admin/blog/${article.id}/edit`}
-                          aria-label={`Edit ${article.title}`}
-                          className="p-2 text-slate-400 hover:text-primary"
-                        >
-                          <Pencil className="size-4" aria-hidden />
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setPendingDelete(article)}
-                          aria-label={`Delete ${article.title}`}
-                          className="p-2 text-slate-400 hover:text-accent-red"
-                        >
-                          <Trash2 className="size-4" aria-hidden />
-                        </button>
-                      </div>
+                      <ArticleActions
+                        article={article}
+                        scheduled={scheduled}
+                        onDelete={() => setPendingDelete(article)}
+                      />
                     </td>
                   </tr>
                 );

@@ -7,7 +7,7 @@ export const metadata: Metadata = { title: "Companies" };
 
 export default function AdminCompaniesPage() {
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-h2">Companies</h1>

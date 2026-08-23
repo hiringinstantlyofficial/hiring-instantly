@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Recruiters" };
 
 export default function AdminRecruitersPage() {
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <header>
         <h1 className="text-h2">Recruiters</h1>
         <p className="mt-1 text-sm text-slate-600">

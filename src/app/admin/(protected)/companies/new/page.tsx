@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "New company" };
 
 export default function NewCompanyPage() {
   return (
-    <div className="p-6 lg:p-8">
+    <div className="p-4 sm:p-6 lg:p-8">
       <Link
         href="/admin/companies"
         className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary hover:underline"

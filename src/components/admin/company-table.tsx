@@ -28,6 +28,75 @@ const statusStyles: Record<CompanyStatus, string> = {
   hidden: "bg-slate-400/10 text-slate-600",
 };
 
+/** Edit / view / delete icons, shared by desktop rows and mobile cards. */
+function CompanyActions({
+  company,
+  onDelete,
+}: {
+  company: AdminCompany;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="flex items-center justify-end gap-3">
+      <Link
+        href={`/admin/companies/${company.id}/edit`}
+        className="text-slate-400 hover:text-primary"
+        aria-label={`Edit ${company.name}`}
+      >
+        <Pencil className="size-4" aria-hidden />
+      </Link>
+      {company.status === "active" ? (
+        <Link
+          href={`/companies/${company.slug}`}
+          target="_blank"
+          className="text-slate-400 hover:text-primary"
+          aria-label={`View ${company.name} live`}
+        >
+          <ExternalLink className="size-4" aria-hidden />
+        </Link>
+      ) : null}
+      <button
+        type="button"
+        onClick={onDelete}
+        className="text-slate-400 hover:text-accent-red"
+        aria-label={`Delete ${company.name}`}
+      >
+        <Trash2 className="size-4" aria-hidden />
+      </button>
+    </div>
+  );
+}
+
+function CompanyStatusSelect({
+  id,
+  company,
+  onChange,
+}: {
+  id: string;
+  company: AdminCompany;
+  onChange: (status: CompanyStatus) => void;
+}) {
+  return (
+    <>
+      <label className="sr-only" htmlFor={id}>
+        Status for {company.name}
+      </label>
+      <select
+        id={id}
+        value={company.status}
+        onChange={(event) => onChange(event.target.value as CompanyStatus)}
+        className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${statusStyles[company.status]}`}
+      >
+        {COMPANY_STATUSES.map((status) => (
+          <option key={status} value={status}>
+            {COMPANY_STATUS_LABELS[status]}
+          </option>
+        ))}
+      </select>
+    </>
+  );
+}
+
 export function CompanyTable() {
   const [filters, setFilters] = useState<AdminCompanyFilters>({
     search: "",
@@ -45,8 +114,8 @@ export function CompanyTable() {
 
   return (
     <div className="border border-line bg-white">
-      <div className="flex flex-wrap items-center gap-3 border-b border-line p-4">
-        <div className="relative min-w-0 flex-1">
+      <div className="flex flex-col gap-3 border-b border-line p-4 sm:flex-row sm:items-center">
+        <div className="relative sm:min-w-0 sm:flex-1">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
             aria-hidden
@@ -69,49 +138,51 @@ export function CompanyTable() {
           />
         </div>
 
-        <div>
-          <label htmlFor="admin-company-status" className="sr-only">
-            Filter by status
-          </label>
-          <select
-            id="admin-company-status"
-            value={filters.status}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                status: event.target.value as AdminCompanyFilters["status"],
-              }))
-            }
-            className={selectClass}
-          >
-            <option value="all">All statuses</option>
-            {COMPANY_STATUSES.map((status) => (
-              <option key={status} value={status}>
-                {COMPANY_STATUS_LABELS[status]}
-              </option>
-            ))}
-          </select>
-        </div>
+        <div className="grid grid-cols-2 gap-3 sm:flex">
+          <div>
+            <label htmlFor="admin-company-status" className="sr-only">
+              Filter by status
+            </label>
+            <select
+              id="admin-company-status"
+              value={filters.status}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  status: event.target.value as AdminCompanyFilters["status"],
+                }))
+              }
+              className={`${selectClass} w-full sm:w-auto`}
+            >
+              <option value="all">All statuses</option>
+              {COMPANY_STATUSES.map((status) => (
+                <option key={status} value={status}>
+                  {COMPANY_STATUS_LABELS[status]}
+                </option>
+              ))}
+            </select>
+          </div>
 
-        <div>
-          <label htmlFor="admin-company-sort" className="sr-only">
-            Sort
-          </label>
-          <select
-            id="admin-company-sort"
-            value={filters.sort}
-            onChange={(event) =>
-              setFilters((current) => ({
-                ...current,
-                sort: event.target.value as AdminCompanyFilters["sort"],
-              }))
-            }
-            className={selectClass}
-          >
-            <option value="name">Name A–Z</option>
-            <option value="jobs">Most listings</option>
-            <option value="newest">Newest first</option>
-          </select>
+          <div>
+            <label htmlFor="admin-company-sort" className="sr-only">
+              Sort
+            </label>
+            <select
+              id="admin-company-sort"
+              value={filters.sort}
+              onChange={(event) =>
+                setFilters((current) => ({
+                  ...current,
+                  sort: event.target.value as AdminCompanyFilters["sort"],
+                }))
+              }
+              className={`${selectClass} w-full sm:w-auto`}
+            >
+              <option value="name">Name A–Z</option>
+              <option value="jobs">Most listings</option>
+              <option value="newest">Newest first</option>
+            </select>
+          </div>
         </div>
       </div>
 
@@ -142,8 +213,67 @@ export function CompanyTable() {
         </p>
       ) : null}
 
+      {/* Phones get stacked cards — the 720px table would clip most of its
+          columns off the viewport with no hint they exist. */}
       {rows.length ? (
-        <div className="overflow-x-auto">
+        <ul className="divide-y divide-line-soft md:hidden">
+          {rows.map((company) => (
+            <li key={company.id} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <CompanyLogo
+                    name={company.name}
+                    logoUrl={company.logo_url}
+                    size={36}
+                  />
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 font-semibold text-navy-700">
+                      <span className="truncate">{company.name}</span>
+                      {company.is_verified ? (
+                        <BadgeCheck
+                          className="size-4 shrink-0 text-primary"
+                          aria-label="Verified"
+                        />
+                      ) : null}
+                    </p>
+                    <p className="truncate text-xs text-slate-400">
+                      /companies/{company.slug}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-1 shrink-0">
+                  <CompanyActions
+                    company={company}
+                    onDelete={() => {
+                      setDeleteError(null);
+                      setPendingDelete(company);
+                    }}
+                  />
+                </div>
+              </div>
+              <p className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-slate-600">
+                {company.created_by ? (
+                  <span className="rounded-full bg-accent-blue/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent-blue">
+                    Recruiter-created
+                  </span>
+                ) : null}
+                {company.jobCount} listing{company.jobCount === 1 ? "" : "s"} ·{" "}
+                {company.industry ?? "—"}
+              </p>
+              <div className="mt-2">
+                <CompanyStatusSelect
+                  id={`status-m-${company.id}`}
+                  company={company}
+                  onChange={(status) => updateStatus.mutate({ company, status })}
+                />
+              </div>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {rows.length ? (
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full min-w-[720px] text-sm">
             <thead>
               <tr className="border-b border-line text-left text-xs uppercase tracking-wide text-slate-400">
@@ -203,59 +333,23 @@ export function CompanyTable() {
                   </td>
 
                   <td className="px-4 py-3">
-                    <label className="sr-only" htmlFor={`status-${company.id}`}>
-                      Status for {company.name}
-                    </label>
-                    <select
+                    <CompanyStatusSelect
                       id={`status-${company.id}`}
-                      value={company.status}
-                      onChange={(event) =>
-                        updateStatus.mutate({
-                          company,
-                          status: event.target.value as CompanyStatus,
-                        })
+                      company={company}
+                      onChange={(status) =>
+                        updateStatus.mutate({ company, status })
                       }
-                      className={`rounded-full border-0 px-2.5 py-1 text-xs font-semibold ${statusStyles[company.status]}`}
-                    >
-                      {COMPANY_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {COMPANY_STATUS_LABELS[status]}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </td>
 
                   <td className="px-4 py-3">
-                    <div className="flex items-center justify-end gap-3">
-                      <Link
-                        href={`/admin/companies/${company.id}/edit`}
-                        className="text-slate-400 hover:text-primary"
-                        aria-label={`Edit ${company.name}`}
-                      >
-                        <Pencil className="size-4" aria-hidden />
-                      </Link>
-                      {company.status === "active" ? (
-                        <Link
-                          href={`/companies/${company.slug}`}
-                          target="_blank"
-                          className="text-slate-400 hover:text-primary"
-                          aria-label={`View ${company.name} live`}
-                        >
-                          <ExternalLink className="size-4" aria-hidden />
-                        </Link>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setPendingDelete(company);
-                        }}
-                        className="text-slate-400 hover:text-accent-red"
-                        aria-label={`Delete ${company.name}`}
-                      >
-                        <Trash2 className="size-4" aria-hidden />
-                      </button>
-                    </div>
+                    <CompanyActions
+                      company={company}
+                      onDelete={() => {
+                        setDeleteError(null);
+                        setPendingDelete(company);
+                      }}
+                    />
                   </td>
                 </tr>
               ))}

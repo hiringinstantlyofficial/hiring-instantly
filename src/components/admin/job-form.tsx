@@ -12,13 +12,18 @@ import { TriangleAlert } from "lucide-react";
 
 import { revalidateJobPaths } from "@/app/actions/admin";
 import { CompanyPicker } from "@/components/admin/company-picker";
+import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { Field, Fieldset, inputClass } from "@/components/admin/form-fields";
 import { JobFields } from "@/components/admin/job-fields";
 import { Button } from "@/components/ui/button";
 import { useCompanyOptions } from "@/hooks/use-admin-companies";
+import {
+  useNewsletterSubscriberCount,
+  useSendJobNewsletter,
+} from "@/hooks/use-newsletter";
 import { parseJobImport, type CompanyImportHint } from "@/lib/job-import";
 import { createClient } from "@/lib/supabase/client";
-import { cn, slugify, toISTDateInput } from "@/lib/utils";
+import { cn, formatDate, slugify, toISTDateInput } from "@/lib/utils";
 import type { CompanyFormValues } from "@/lib/validations";
 import {
   jobFormSchema,
@@ -64,6 +69,12 @@ export function JobForm({ job }: { job?: Job }) {
   const router = useRouter();
   const isEdit = Boolean(job);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Set after a save that leaves the listing live: "email the subscribers?"
+  // Navigation back to the table waits for the prompt's answer.
+  const [notifyJob, setNotifyJob] = useState<{ id: string; title: string } | null>(null);
+  const sendNewsletter = useSendJobNewsletter();
+  const { data: subscriberCount } = useNewsletterSubscriberCount();
 
   // Also feeds the import's "match or create" step and the company slug passed
   // to revalidateJobPaths; the picker reads the same cached query.
@@ -148,9 +159,14 @@ export function JobForm({ job }: { job?: Job }) {
       valid_through: values.valid_through,
     };
 
-    const { error } = job
-      ? await supabase.from("jobs").update(payload).eq("id", job.id)
-      : await supabase.from("jobs").insert(payload);
+    const { data: saved, error } = job
+      ? await supabase
+          .from("jobs")
+          .update(payload)
+          .eq("id", job.id)
+          .select("id")
+          .single()
+      : await supabase.from("jobs").insert(payload).select("id").single();
 
     if (error) {
       setFormError(
@@ -165,9 +181,23 @@ export function JobForm({ job }: { job?: Job }) {
       payload.slug,
       companyOptions?.find((option) => option.id === payload.company_id)?.slug,
     );
+
+    // A live listing is worth telling the list about; drafts and closed jobs
+    // are not. The prompt decides — nothing sends without the admin's yes.
+    if (values.status === "active" && saved) {
+      setNotifyJob({ id: saved.id, title: values.title });
+      return;
+    }
+
     router.push("/admin/jobs");
     router.refresh();
   });
+
+  const exitToJobsTable = () => {
+    setNotifyJob(null);
+    router.push("/admin/jobs");
+    router.refresh();
+  };
 
   const errorFor = (field: keyof JobFormValues) =>
     (errors[field] as FieldError | undefined)?.message;
@@ -355,6 +385,34 @@ export function JobForm({ job }: { job?: Job }) {
           Cancel
         </Button>
       </div>
+
+      <ConfirmDialog
+        open={Boolean(notifyJob)}
+        variant="send"
+        title="Email this job to subscribers?"
+        description={
+          notifyJob
+            ? `Saved. Send "${notifyJob.title}" to ${
+                subscriberCount === undefined
+                  ? "all"
+                  : subscriberCount.toLocaleString("en-IN")
+              } newsletter subscriber${subscriberCount === 1 ? "" : "s"}?${
+                job?.newsletter_sent_at
+                  ? ` It was already emailed on ${formatDate(job.newsletter_sent_at)} — sending again emails everyone twice.`
+                  : ""
+              }`
+            : ""
+        }
+        confirmLabel="Send the email"
+        pending={sendNewsletter.isPending}
+        onCancel={exitToJobsTable}
+        onConfirm={() => {
+          if (!notifyJob) return;
+          // The listing is saved either way; the email is best-effort, so a
+          // failed send logs server-side and still returns to the table.
+          sendNewsletter.mutate(notifyJob.id, { onSettled: exitToJobsTable });
+        }}
+      />
     </form>
   );
 }

@@ -8,6 +8,7 @@ import { COMPANIES_CACHE_TAG } from "@/lib/companies";
 import {
   changesRequestedEmail,
   jobApprovedEmail,
+  jobNewsletterEmail,
   membershipApprovedEmail,
   sendEmail,
 } from "@/lib/email";
@@ -16,7 +17,9 @@ import { captureError } from "@/lib/observability";
 import { absoluteUrl } from "@/lib/site";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { formatSalaryRange } from "@/lib/utils";
 import { reviewActionSchema } from "@/lib/validations";
+import { JOB_TYPE_LABELS } from "@/types/job";
 
 /**
  * Flushes every cached surface a job appears on. Called by the admin mutations
@@ -409,6 +412,115 @@ export async function approveMembership(
   }
 
   return { ok: true };
+}
+
+/* -------------------------------------------------------------------------- */
+/*  Newsletter broadcast                                                      */
+/* -------------------------------------------------------------------------- */
+
+interface NewsletterSendResult {
+  ok: boolean;
+  /** How many subscribers were emailed (0 when the list is empty). */
+  sent?: number;
+  message?: string;
+}
+
+/** How many ZeptoMail calls run at once during a broadcast. */
+const BROADCAST_CONCURRENCY = 8;
+
+/**
+ * Emails a live listing to every active newsletter subscriber. Only ever runs
+ * because an admin explicitly confirmed the "email the subscribers?" prompt —
+ * nothing sends this automatically.
+ *
+ * Sends are sequential chunks of BROADCAST_CONCURRENCY: sendEmail never
+ * throws, so a bad address costs one warning in the logs, not the broadcast.
+ * newsletter_sent_at is stamped afterwards so the admin UI can warn before a
+ * duplicate send — deliberately re-sending after an edit stays possible.
+ */
+export async function sendJobNewsletter(
+  jobId: string,
+): Promise<NewsletterSendResult> {
+  const auth = await requireAdmin();
+  if (!auth) return { ok: false, message: "Not authorised." };
+
+  if (typeof jobId !== "string" || !jobId) {
+    return { ok: false, message: "Missing job." };
+  }
+
+  const admin = createSupabaseAdminClient();
+
+  const { data: job, error: jobError } = await admin
+    .from("jobs")
+    .select(
+      "id, slug, title, company_name, location, job_type, salary_min, salary_max, salary_currency, status",
+    )
+    .eq("id", jobId)
+    .maybeSingle();
+
+  if (jobError || !job) return { ok: false, message: "Job not found." };
+  if (job.status !== "active") {
+    return {
+      ok: false,
+      message: "Only live listings can be emailed to subscribers.",
+    };
+  }
+
+  const { data: subscribers, error: subsError } = await admin
+    .from("newsletter_subscribers")
+    .select("email, unsubscribe_token")
+    .is("unsubscribed_at", null);
+
+  if (subsError) {
+    captureError(subsError, { scope: "admin.sendJobNewsletter" });
+    return { ok: false, message: "Couldn't load the subscriber list." };
+  }
+
+  const list = subscribers ?? [];
+  if (list.length === 0) {
+    return { ok: true, sent: 0, message: "No active subscribers yet." };
+  }
+
+  const jobUrl = absoluteUrl(`/jobs/${job.slug}`);
+  const salary = formatSalaryRange(
+    job.salary_min,
+    job.salary_max,
+    job.salary_currency,
+  );
+
+  for (let i = 0; i < list.length; i += BROADCAST_CONCURRENCY) {
+    await Promise.all(
+      list.slice(i, i + BROADCAST_CONCURRENCY).map((subscriber) =>
+        sendEmail({
+          to: subscriber.email,
+          ...jobNewsletterEmail({
+            jobTitle: job.title,
+            companyName: job.company_name,
+            location: job.location,
+            jobTypeLabel: JOB_TYPE_LABELS[job.job_type],
+            salary,
+            jobUrl,
+            unsubscribeUrl: absoluteUrl(
+              `/api/newsletter/unsubscribe?token=${subscriber.unsubscribe_token}`,
+            ),
+          }),
+        }),
+      ),
+    );
+  }
+
+  const { error: stampError } = await admin
+    .from("jobs")
+    .update({ newsletter_sent_at: new Date().toISOString() })
+    .eq("id", jobId);
+  if (stampError) {
+    captureError(stampError, {
+      scope: "admin.sendJobNewsletter.stamp",
+      severity: "warning",
+    });
+  }
+
+  return { ok: true, sent: list.length };
 }
 
 /** The kill switch. Suspension refuses every write; live jobs stay live. */

@@ -2,9 +2,11 @@
 
 import { headers } from "next/headers";
 
+import { newsletterWelcomeEmail, sendEmail } from "@/lib/email";
 import type { FormState } from "@/lib/form-state";
 import { captureError } from "@/lib/observability";
 import { clientIpFrom, rateLimit } from "@/lib/rate-limit";
+import { absoluteUrl } from "@/lib/site";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 import { contactSchema, newsletterSchema } from "@/lib/validations";
 
@@ -125,14 +127,38 @@ export async function subscribeToNewsletter(
 
   try {
     const supabase = createSupabaseAdminClient();
-    const { error } = await supabase
+    const { data: inserted, error } = await supabase
       .from("newsletter_subscribers")
-      .insert({ email: parsed.data.email.toLowerCase() });
+      .insert({ email: parsed.data.email.toLowerCase() })
+      .select("unsubscribe_token")
+      .single();
 
     // 23505 = unique violation: already subscribed, which is a success here.
     if (error && error.code !== "23505") {
       captureError(error, { scope: "newsletter.insert" });
       return { status: "error", message: "Couldn't subscribe. Try again later." };
+    }
+
+    // An existing row may belong to someone who unsubscribed and is now
+    // signing up again — reactivate them, without a second welcome email.
+    if (error?.code === "23505") {
+      await supabase
+        .from("newsletter_subscribers")
+        .update({ unsubscribed_at: null })
+        .eq("email", parsed.data.email.toLowerCase());
+    }
+
+    // Only a genuinely new row (no duplicate error) gets the welcome email —
+    // re-subscribing must not re-mail. Best-effort: sendEmail never throws.
+    if (inserted) {
+      await sendEmail({
+        to: parsed.data.email.toLowerCase(),
+        ...newsletterWelcomeEmail({
+          unsubscribeUrl: absoluteUrl(
+            `/api/newsletter/unsubscribe?token=${inserted.unsubscribe_token}`,
+          ),
+        }),
+      });
     }
   } catch (error) {
     captureError(error, { scope: "newsletter.unexpected" });

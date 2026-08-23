@@ -118,15 +118,21 @@ export async function sendEmail(message: EmailMessage): Promise<void> {
 /*  Templates — §8 of the plan. Plain, short, one clear link each.            */
 /* -------------------------------------------------------------------------- */
 
-function layout(body: string): string {
+function layout(body: string, footer?: string): string {
   return `
   <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#25324b">
     <p style="font-size:18px;font-weight:bold;margin:0 0 20px">${siteConfig.name}</p>
     ${body}
     <p style="margin-top:32px;font-size:12px;color:#7c8493">
-      You're receiving this because of activity on your ${siteConfig.name} employer account.
+      ${footer ?? `You're receiving this because of activity on your ${siteConfig.name} employer account.`}
     </p>
   </div>`;
+}
+
+/** Footer for subscriber-facing mail: the unsubscribe link is not optional. */
+function newsletterFooter(unsubscribeUrl: string): string {
+  return `You're receiving this because you subscribed to job alerts on ${siteConfig.name}.
+    <a href="${unsubscribeUrl}" style="color:#7c8493">Unsubscribe</a>`;
 }
 
 function button(href: string, label: string): string {
@@ -201,6 +207,51 @@ export function changesRequestedEmail(input: {
       <blockquote style="border-left:3px solid #4640de;margin:16px 0;padding:8px 16px;color:#515b6f">${input.note}</blockquote>
       ${button(input.editUrl, "Edit and resubmit")}
     `),
+  };
+}
+
+export function newsletterWelcomeEmail(input: {
+  unsubscribeUrl: string;
+}): Omit<EmailMessage, "to"> {
+  return {
+    subject: `You're on the list — new jobs, straight to your inbox`,
+    html: layout(
+      `
+      <p>Hi,</p>
+      <p>Thanks for subscribing to <strong>${siteConfig.name}</strong>. When a strong new
+      opening goes live — engineering, design, marketing, sales and more, across India —
+      we'll send it your way.</p>
+      ${button(absoluteUrl("/jobs"), "Browse today's openings")}
+    `,
+      newsletterFooter(input.unsubscribeUrl),
+    ),
+  };
+}
+
+export function jobNewsletterEmail(input: {
+  jobTitle: string;
+  companyName: string;
+  location: string;
+  jobTypeLabel: string;
+  salary: string | null;
+  jobUrl: string;
+  unsubscribeUrl: string;
+}): Omit<EmailMessage, "to"> {
+  return {
+    subject: `New opening: ${input.jobTitle} at ${input.companyName}`,
+    html: layout(
+      `
+      <p>A new role just went live on ${siteConfig.name}:</p>
+      <p style="border-left:3px solid #4640de;margin:16px 0;padding:8px 16px">
+        <strong>${input.jobTitle}</strong><br/>
+        ${input.companyName} · ${input.location} · ${input.jobTypeLabel}${
+          input.salary ? `<br/>${input.salary}` : ""
+        }
+      </p>
+      ${button(input.jobUrl, "View the listing & apply")}
+    `,
+      newsletterFooter(input.unsubscribeUrl),
+    ),
   };
 }
 
